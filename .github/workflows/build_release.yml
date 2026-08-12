@@ -1,0 +1,47 @@
+name: Package and Release App
+
+on:
+  repository_dispatch:
+    types: [build-exe-release]
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code from Private Repo
+        uses: actions/checkout@v4
+        with:
+          repository: TruongAnh2706/DTA-VideoUnify-Core
+          token: ${{ secrets.PRIVATE_REPO_READ_TOKEN }}
+          ref: ${{ github.event.client_payload.version }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Executable with PyInstaller
+        run: |
+          pyinstaller --noconfirm --onedir --windowed --icon=logo.ico --name="DTA_VideoUnify_Pro" --add-data="logo.png;." --add-data="logo.ico;." main.py
+
+      - name: Setup Inno Setup
+        uses: aminya/setup-innosetup@v2
+
+      - name: Compile Inno Setup Installer
+        run: |
+          iscc setup_script.iss /DAppVersion=${{ github.event.client_payload.version }}
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.client_payload.version }}
+          name: "Release ${{ github.event.client_payload.version }}"
+          files: Output/DTA_VideoUnify_Pro_Setup.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

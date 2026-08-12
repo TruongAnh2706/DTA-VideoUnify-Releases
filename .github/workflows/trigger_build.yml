@@ -1,0 +1,18 @@
+name: Trigger Public Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Repository Dispatch Event
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.PUBLIC_REPO_TRIGGER_TOKEN }}
+          repository: TruongAnh2706/DTA-VideoUnify-Releases
+          event-type: build-exe-release
+          client-payload: '{"version": "${{ github.ref_name }}"}'
