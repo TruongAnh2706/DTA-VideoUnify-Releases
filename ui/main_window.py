@@ -4,7 +4,7 @@ DTA VideoUnify Pro - Main Application Window
 Phát triển bởi DTA Studio - Chủ quản: Đức Trường
 Email: ductruong.onl@gmail.com | Zalo/SĐT: 0962775506
 Website: https://dta-studio.vercel.app/
-Includes Project Removal (Delete item/series from tree list) feature!
+Includes Project Removal & Silent Auto-Update Engine (GitHub Releases API)!
 """
 
 import os
@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QTreeWidget, QTreeWidgetItem, QFileDialog, QGroupBox, QComboBox,
     QCheckBox, QProgressBar, QMessageBox, QFrame, QLineEdit, QSplitter,
-    QMenu
+    QMenu, QDialog
 )
 from PyQt6.QtGui import QIcon, QColor, QPixmap, QKeySequence, QShortcut
 
@@ -28,6 +28,7 @@ from ui.widgets.log_console import CollapsibleLogConsole
 from workers.scanner_worker import FolderScannerThread
 from workers.render_worker import BatchRenderThread
 from utils.ffmpeg_helper import FFmpegHelper
+from utils.updater import UpdateCheckThread, UpdateDownloadThread
 
 
 class DTAVideoUnifyMainWindow(QMainWindow):
@@ -35,7 +36,7 @@ class DTAVideoUnifyMainWindow(QMainWindow):
     Main Studio Window of DTA VideoUnify Pro featuring 3-column Layout,
     Interactive 4-Corner Resizable & Draggable Watermark Overlay,
     Cyberpunk Audio Waveform VU Meter, Async FFmpeg Batch Render Engine,
-    and Item/Series Deletion from Merge Queue.
+    Item/Series Deletion from Merge Queue, and Silent Auto-Update System.
     """
 
     def __init__(self):
@@ -61,10 +62,13 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         # Threads
         self.scanner_thread: FolderScannerThread = None
         self.render_thread: BatchRenderThread = None
+        self.update_check_thread: UpdateCheckThread = None
+        self.update_download_thread: UpdateDownloadThread = None
 
         self._apply_theme()
         self._init_ui()
         self._check_environment()
+        self._auto_check_updates_background()
 
     def _apply_theme(self):
         self.setStyleSheet(MAIN_QSS)
@@ -89,7 +93,7 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         col1_layout.setContentsMargins(12, 14, 12, 14)
         col1_layout.setSpacing(10)
 
-        # Header Branding Logo
+        # Header Branding Logo & Auto-Update Check Button
         header_box = QHBoxLayout()
         header_box.setSpacing(10)
         logo_img_label = QLabel()
@@ -109,6 +113,16 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         header_box.addWidget(logo_img_label)
         header_box.addWidget(logo_title)
         header_box.addStretch()
+
+        # Update Check Button
+        self.btn_check_update = QPushButton("🔄 Updates")
+        self.btn_check_update.setStyleSheet(
+            "background-color: #131622; color: #00F2FE; font-weight: 700; font-size: 11px; border: 1px solid #00F2FE; border-radius: 6px; padding: 4px 8px;"
+        )
+        self.btn_check_update.setToolTip("Kiểm tra bản cập nhật mới từ DTA Studio GitHub Releases")
+        self.btn_check_update.clicked.connect(self._manual_check_updates)
+        header_box.addWidget(self.btn_check_update)
+
         col1_layout.addLayout(header_box)
 
         sub_author = QLabel(config.COPYRIGHT_TEXT)
@@ -337,6 +351,91 @@ class DTAVideoUnifyMainWindow(QMainWindow):
             self.log_console.append_log(f"⚠️ [CẢNH BÁO] {msg}")
         else:
             self.log_console.append_log("✅ Hệ thống FFmpeg và FFprobe đã sẵn sàng hoạt động!")
+
+    # ==========================================
+    # SILENT AUTO-UPDATE ENGINE INTEGRATION
+    # ==========================================
+
+    def _auto_check_updates_background(self):
+        """Khởi chạy QThread kiểm tra bản cập nhật ngầm không lag UI khi mở app."""
+        self.update_check_thread = UpdateCheckThread()
+        self.update_check_thread.update_found_signal.connect(self._on_update_found)
+        self.update_check_thread.start()
+
+    def _manual_check_updates(self):
+        """Nút bấm kiểm tra cập nhật thủ công."""
+        self.btn_check_update.setText("⏳ Đang kiểm tra...")
+        self.btn_check_update.setEnabled(False)
+        self.log_console.append_log("🔄 Đang kiểm tra bản cập nhật mới trên DTA Studio GitHub Releases...")
+
+        self.update_check_thread = UpdateCheckThread()
+        self.update_check_thread.update_found_signal.connect(self._on_update_found)
+        self.update_check_thread.no_update_signal.connect(self._on_no_update_found)
+        self.update_check_thread.start()
+
+    @pyqtSlot(str, str, str)
+    def _on_update_found(self, latest_ver: str, download_url: str, release_notes: str):
+        self.btn_check_update.setText("🔴 Có Bản Mới!")
+        self.btn_check_update.setStyleSheet(
+            "background-color: #FF0055; color: #FFFFFF; font-weight: 800; font-size: 11px; border-radius: 6px; padding: 4px 8px;"
+        )
+        self.btn_check_update.setEnabled(True)
+        self.log_console.append_log(f"🚀 [AUTO-UPDATE] Phát hiện phiên bản mới v{latest_ver}!")
+
+        # Dialog Cập Nhật Ngầm Chuẩn Cyberpunk Dark Studio
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(f"🎉 Phát Hiện Bản Cập Nhật Mới v{latest_ver} - DTA Studio")
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setText(f"<b>DTA VideoUnify Pro v{latest_ver} đã sẵn sàng!</b>")
+
+        clean_notes = release_notes.replace("\n", "<br>")
+        msg_box.setInformativeText(
+            f"Phiên bản hiện tại: <b>v{config.APP_VERSION}</b> ➔ Phiên bản mới: <font color='#00F2FE'><b>v{latest_ver}</b></font><br><br>"
+            f"<b>Chi tiết cập nhật từ Đức Trường DTA:</b><br>{clean_notes}<br><br>"
+            f"<i>Bạn có muốn tải ngầm và tự động nâng cấp ứng dụng ngay không?</i>"
+        )
+
+        btn_update_now = msg_box.addButton("🚀 CẬP NHẬT NGAY (SILENT UPDATE)", QMessageBox.ButtonRole.AcceptRole)
+        btn_later = msg_box.addButton("Để Sau", QMessageBox.ButtonRole.RejectRole)
+
+        msg_box.exec()
+
+        if msg_box.clickedButton() == btn_update_now:
+            self._start_silent_update_download(download_url)
+
+    @pyqtSlot(str)
+    def _on_no_update_found(self, current_ver: str):
+        self.btn_check_update.setText("🔄 Updates")
+        self.btn_check_update.setStyleSheet(
+            "background-color: #131622; color: #00F2FE; font-weight: 700; font-size: 11px; border: 1px solid #00F2FE; border-radius: 6px; padding: 4px 8px;"
+        )
+        self.btn_check_update.setEnabled(True)
+        self.log_console.append_log(f"✅ Bạn đang sử dụng phiên bản mới nhất v{config.APP_VERSION}.")
+        QMessageBox.information(self, "Thông báo Cập Nhật", f"Ứng dụng DTA VideoUnify Pro (v{config.APP_VERSION}) đã ở phiên bản mới nhất!")
+
+    def _start_silent_update_download(self, download_url: str):
+        """Kích hoạt QThread tải bản cập nhật ngầm và tự động cài đặt."""
+        self.log_console.append_log("⚡ Đang tải bản cập nhật ngầm vào %TEMP%...")
+        self.status_bar_label.setText("⚡ Đang tải bản cập nhật ngầm...")
+        self.progress_bar.setValue(10)
+
+        self.update_download_thread = UpdateDownloadThread(download_url)
+        self.update_download_thread.progress_signal.connect(self._on_update_download_progress)
+        self.update_download_thread.finished_signal.connect(self._on_update_download_finished)
+        self.update_download_thread.start()
+
+    @pyqtSlot(int, str)
+    def _on_update_download_progress(self, pct: int, status_text: str):
+        self.progress_bar.setValue(pct)
+        self.status_bar_label.setText(status_text)
+        if pct % 20 == 0:
+            self.log_console.append_log(status_text)
+
+    @pyqtSlot(bool)
+    def _on_update_download_finished(self, success: bool):
+        if not success:
+            self.status_bar_label.setText("❌ Không thể tải bản cập nhật.")
+            QMessageBox.critical(self, "Lỗi Cập Nhật", "Không thể tải bản cập nhật từ GitHub. Vui lòng thử lại sau.")
 
     # ==========================================
     # SLOTS & EVENT HANDLERS
@@ -616,7 +715,7 @@ class DTAVideoUnifyMainWindow(QMainWindow):
             # Sanitize filename
             clean_title = "".join(c for c in title if c.isalnum() or c in (" ", "_", "-")).strip()
             out_file_name = f"{clean_title}_FULL{selected_ext}"
-            out_filepath = os.path.join(out_dir, out_file_name)
+            out_filepath = os.path.normpath(os.path.abspath(os.path.join(out_dir, out_file_name)))
             render_jobs.append((title, s_info, out_filepath))
 
         wm_status_str = f"Có (Tọa độ X:{int(wm_params['rel_x']*100)}%, Y:{int(wm_params['rel_y']*100)}%, Size:{int(wm_params['scale']*100)}%)" if wm_params['enabled'] else "Không"

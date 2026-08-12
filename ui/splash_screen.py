@@ -1,14 +1,10 @@
 """
 DTA VideoUnify Pro - Cyberpunk Splash Screen & Auto-Update/Downloader UI
 Phát triển bởi DTA Studio - Chủ quản: Đức Trường
-Features Animated Gradient Glowing Border, Centered Glow Logo, Silent GitHub Auto-Update, & Auto FFmpeg Downloader QThread.
+Features Animated Gradient Glowing Border, Centered Glow Logo, & Auto FFmpeg Downloader QThread.
 """
 
 import os
-import sys
-import requests
-import subprocess
-from typing import Tuple, Optional
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QProgressBar, QFrame, QGraphicsDropShadowEffect
@@ -17,72 +13,24 @@ from PyQt6.QtGui import QPixmap, QColor, QPainter, QLinearGradient, QPen
 import config
 from utils.ffmpeg_downloader import FFmpegDownloader
 
-# Silent Auto-Update GitHub Settings
-PUBLIC_REPO = "TruongAnh2706/DTA-VideoUnify-Releases"
-
 
 class SplashInitWorker(QThread):
     """
-    QThread worker to run initial system checks, check Silent GitHub Auto-Updates,
-    and download FFmpeg automatically if missing.
+    QThread worker to run initial system checks and download FFmpeg automatically if missing.
     """
 
     progress_signal = pyqtSignal(int, str)   # percent, status_text
     finished_signal = pyqtSignal(bool, str)  # success, message
 
-    def _check_github_update(self) -> Tuple[bool, str, Optional[str]]:
-        try:
-            url = f"https://api.github.com/repos/{PUBLIC_REPO}/releases/latest"
-            res = requests.get(url, timeout=3)
-            if res.status_code == 200:
-                data = res.json()
-                latest_ver = data.get("tag_name", "").lstrip("v")
-                
-                # Compare versions
-                from packaging import version
-                if latest_ver and version.parse(latest_ver) > version.parse(config.APP_VERSION):
-                    for asset in data.get("assets", []):
-                        if asset.get("name", "").endswith(".exe"):
-                            return True, latest_ver, asset.get("browser_download_url")
-        except Exception:
-            pass
-        return False, config.APP_VERSION, None
-
     def run(self):
         try:
-            self.progress_signal.emit(10, "Đang kiểm tra môi trường hệ thống & Cập nhật GitHub...")
-            QThread.msleep(300)
-
-            # Check Silent Auto-Update from GitHub Releases
-            has_update, latest_ver, download_url = self._check_github_update()
-            if has_update and download_url:
-                self.progress_signal.emit(30, f"Phát hiện bản cập nhật mới v{latest_ver}! Đang tải ngầm...")
-                temp_dir = os.getenv("TEMP", ".")
-                installer_path = os.path.join(temp_dir, "update_installer.exe")
-                
-                res = requests.get(download_url, stream=True)
-                with open(installer_path, "wb") as f:
-                    for chunk in res.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                        
-                bat_path = os.path.join(temp_dir, "silent_updater.bat")
-                batch_script_content = f'''@echo off
-timeout /t 2 /nobreak > nul
-"{installer_path}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-start "" "{sys.executable}"
-del "%~f0"
-'''
-                with open(bat_path, "w", encoding="utf-8") as f:
-                    f.write(batch_script_content)
-                
-                subprocess.Popen(["cmd.exe", "/c", bat_path], creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0)
-                self.finished_signal.emit(False, "Đang cập nhật phiên bản mới...")
-                return
+            self.progress_signal.emit(10, "Đang kiểm tra môi trường hệ thống & FFmpeg binaries...")
+            QThread.msleep(500)
 
             need_download = FFmpegDownloader.check_need_download()
 
             if need_download:
-                self.progress_signal.emit(40, "Phát hiện thiếu FFmpeg! Bắt đầu tải bản tĩnh FFmpeg...")
+                self.progress_signal.emit(20, "Phát hiện thiếu FFmpeg! Bắt đầu tải bản tĩnh FFmpeg...")
                 
                 def _on_download_progress(pct, status):
                     self.progress_signal.emit(pct, status)
@@ -90,15 +38,15 @@ del "%~f0"
                 success = FFmpegDownloader.download_and_extract(_on_download_progress)
                 if success:
                     self.progress_signal.emit(100, "✅ Đã tải và cài đặt FFmpeg thành công! Đang khởi chạy...")
-                    QThread.msleep(500)
+                    QThread.msleep(700)
                     self.finished_signal.emit(True, "Sẵn sàng")
                 else:
                     self.finished_signal.emit(False, "Không thể tải tự động FFmpeg. Bạn vẫn có thể mở app xem thử.")
             else:
                 self.progress_signal.emit(80, "✅ FFmpeg & FFprobe đã sẵn sàng trong hệ thống!")
-                QThread.msleep(400)
+                QThread.msleep(500)
                 self.progress_signal.emit(100, "Đang mở DTA VideoUnify Pro...")
-                QThread.msleep(200)
+                QThread.msleep(300)
                 self.finished_signal.emit(True, "Sẵn sàng")
 
         except Exception as e:
@@ -199,7 +147,7 @@ class DTASplashScreen(QWidget):
 
         container_layout.addSpacing(10)
 
-        # 5. Real-time Status Label
+        # 5. Real-time Status Label (Clean without border!)
         self.status_label = QLabel("Đang khởi tạo môi trường DTA Studio...")
         self.status_label.setStyleSheet("color: #E2E8F0; font-size: 13px; font-weight: 600;")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -224,7 +172,7 @@ class DTASplashScreen(QWidget):
         container_layout.addWidget(self.progress_bar)
 
         # 7. Footer Subtitle
-        footer_label = QLabel("System Checker & Silent Auto-Updater Engine v2.0")
+        footer_label = QLabel("System Checker & Auto-Updater Engine v2.0")
         footer_label.setStyleSheet("color: #4A5568; font-size: 10px; font-weight: 600;")
         footer_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         container_layout.addWidget(footer_label)
@@ -259,6 +207,7 @@ class DTASplashScreen(QWidget):
         # Dynamic Gradient Colors shifting with anim_angle
         import math
         c1_factor = (math.sin(self.anim_angle) + 1) / 2.0
+        c2_factor = (math.cos(self.anim_angle) + 1) / 2.0
 
         gradient = QLinearGradient(rect.topLeft().toPointF(), rect.bottomRight().toPointF())
         gradient.setColorAt(0.0, QColor(0, 242, 254))                             # Cyan
@@ -284,6 +233,5 @@ class DTASplashScreen(QWidget):
 
     def _on_finished(self, success: bool, msg: str):
         self.border_timer.stop()
-        if success:
-            self.app_ready_signal.emit()
-            self.close()
+        self.app_ready_signal.emit()
+        self.close()
