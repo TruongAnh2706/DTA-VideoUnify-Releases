@@ -1,0 +1,17 @@
+# PyInstaller / Build outputs
+build/
+dist/
+Output/
+*.exe
+*.spec
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
