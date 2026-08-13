@@ -1,6 +1,6 @@
 """
 DTA VideoUnify Pro - Silent Auto-Update Engine (GitHub Releases)
-Phát triển bởi DTA Studio - Chủ quản: Đức Trường
+Phát triển bởi DTA Studio - Chủ quản: Đức Trường (0962.775.506)
 Email: ductruong.onl@gmail.com | Zalo/SĐT: 0962775506
 Website: https://dta-studio.vercel.app/
 GitHub Repo: TruongAnh2706/DTA-VideoUnify-Releases
@@ -8,7 +8,8 @@ GitHub Repo: TruongAnh2706/DTA-VideoUnify-Releases
 
 import sys
 import os
-import requests
+import httpx
+import tempfile
 import subprocess
 from pathlib import Path
 from typing import Tuple, Optional, Callable
@@ -17,68 +18,60 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 import config
 
+APP_EXE_NAME = "DTA_VideoUnify_Pro.exe"
 
 class SilentUpdater:
     """
     Module Cập Nhật Ngầm (Silent Auto-Update Engine) cho DTA VideoUnify Pro.
     Tự động kiểm tra bản phát hành mới trên Public GitHub Releases API
-    và nâng cấp ngầm không gián đoạn trải nghiệm người dùng.
+    và nâng cấp ngầm không gián đoạn trải nghiệm người dùng theo đúng Blueprint DTA Studio.
     """
 
     PUBLIC_REPO = "TruongAnh2706/DTA-VideoUnify-Releases"
-    CURRENT_VERSION = config.APP_VERSION  # "2.0.0"
+    CURRENT_VERSION = config.APP_VERSION.split()[0]  # ví dụ "2.0.0"
 
     @classmethod
     def check_for_updates(cls) -> Tuple[bool, str, Optional[str], str]:
-        """
-        Kiểm tra phiên bản mới từ GitHub Releases API.
-        Returns: (has_update, latest_version, download_url, release_notes)
-        """
+        """Kiểm tra phiên bản mới từ GitHub Releases API"""
         try:
             url = f"https://api.github.com/repos/{cls.PUBLIC_REPO}/releases/latest"
-            headers = {"User-Agent": f"DTA-VideoUnify-Pro-AutoUpdater/v{cls.CURRENT_VERSION}"}
-            res = requests.get(url, headers=headers, timeout=6)
+            with httpx.Client(timeout=6.0, follow_redirects=True) as client:
+                res = client.get(url)
+                if res.status_code == 200:
+                    data = res.json()
+                    raw_tag = data.get("tag_name", "v1.0.0")
+                    latest_ver = raw_tag.lstrip("v").strip()
+                    release_notes = data.get("body", "Phiên bản nâng cấp tính năng và hiệu năng từ DTA Studio.")
 
-            if res.status_code == 200:
-                data = res.json()
-                raw_tag = data.get("tag_name", "v1.0.0")
-                latest_ver = raw_tag.lstrip("v").strip()
-                release_notes = data.get("body", "Phiên bản nâng cấp tính năng và hiệu năng từ DTA Studio.")
-
-                # So sánh phiên bản với packaging.version
-                if version.parse(latest_ver) > version.parse(cls.CURRENT_VERSION):
-                    for asset in data.get("assets", []):
-                        name = asset.get("name", "").lower()
-                        if name.endswith(".exe") or name.endswith(".zip"):
-                            download_url = asset.get("browser_download_url")
-                            return True, latest_ver, download_url, release_notes
+                    # So sánh phiên bản với packaging.version
+                    if latest_ver and version.parse(latest_ver) > version.parse(cls.CURRENT_VERSION):
+                        for asset in data.get("assets", []):
+                            name = asset.get("name", "").lower()
+                            if name.endswith(".exe") or name.endswith(".zip"):
+                                download_url = asset.get("browser_download_url")
+                                return True, latest_ver, download_url, release_notes
 
         except Exception as e:
-            print(f"[DTA AutoUpdate Warning] Lỗi kiểm tra cập nhật: {e}")
+            print(f"[Silent Update Check Note] {e}")
 
         return False, cls.CURRENT_VERSION, None, ""
 
     @classmethod
     def perform_silent_update(cls, download_url: str, progress_callback: Optional[Callable[[int, str], None]] = None) -> bool:
-        """
-        Tải bản cài đặt mới ngầm vào thư mục %TEMP% và chạy Inno Setup Silent Installer khi đóng app.
-        """
-        try:
-            temp_dir = Path(os.getenv("TEMP", tempfile.gettempdir()))
-            installer_path = temp_dir / "DTA_VideoUnify_Pro_Update_Setup.exe"
+        """Tải bản cài đặt mới ngầm vào %TEMP% và chạy Silent Installer khi đóng app"""
+        temp_dir = os.getenv("TEMP") or os.getenv("TMP") or tempfile.gettempdir()
+        installer_path = os.path.join(temp_dir, "dta_videounify_update.exe")
 
+        try:
             if progress_callback:
                 progress_callback(10, "⚡ Đang tải bản cập nhật ngầm từ GitHub...")
 
-            res = requests.get(download_url, stream=True, timeout=30)
-            res.raise_for_status()
-
-            total_size = int(res.headers.get('content-length', 0))
-            downloaded = 0
-
-            with open(installer_path, "wb") as f:
-                for chunk in res.iter_content(chunk_size=65536):
-                    if chunk:
+            # 1. Tải bản cài đặt mới ngầm vào %TEMP%
+            with httpx.Client(timeout=60.0, follow_redirects=True) as client:
+                with client.stream("GET", download_url) as response, open(installer_path, "wb") as f:
+                    total_size = int(response.headers.get('content-length', 0))
+                    downloaded = 0
+                    for chunk in response.iter_bytes(chunk_size=16384):
                         f.write(chunk)
                         downloaded += len(chunk)
                         if total_size > 0 and progress_callback:
@@ -90,39 +83,48 @@ class SilentUpdater:
             if progress_callback:
                 progress_callback(95, "🚀 Tải hoàn tất! Đang khởi chạy nâng cấp ngầm...")
 
-            # Tạo kịch bản Batch thực thi ngầm tự động sau khi ứng dụng hiện tại thoát
-            bat_path = temp_dir / "silent_unify_updater.bat"
+            # 2. Tạo kịch bản Batch thực thi ngầm tự động theo DTA Studio Blueprint
+            bat_path = os.path.join(temp_dir, "silent_updater.bat")
             app_exe = sys.executable
 
-            batch_script_content = f"""@echo off
+            installed_exe = rf"C:\Program Files (x86)\DTA Studio\DTA VideoUnify Pro\{APP_EXE_NAME}"
+            appdata_dir = os.path.join(os.getenv("LOCALAPPDATA") or r"C:\Users\Admin\AppData\Local", "Programs", "DTA Studio", "DTA VideoUnify Pro")
+            appdata_exe = os.path.join(appdata_dir, APP_EXE_NAME)
+
+            batch_script_content = f'''@echo off
+chcp 65001 > nul
+timeout /t 2 /nobreak > nul
+taskkill /F /IM {APP_EXE_NAME} > nul 2>&1
 timeout /t 2 /nobreak > nul
 "{installer_path}" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-start "" "{app_exe}"
+timeout /t 3 /nobreak > nul
+if exist "{installed_exe}" (
+    start "" "{installed_exe}"
+) else if exist "{appdata_exe}" (
+    start "" "{appdata_exe}"
+) else (
+    start "" "{app_exe}"
+)
 del "%~f0"
-"""
-            with open(bat_path, "w", encoding="utf-8", errors="ignore") as f:
+'''
+            with open(bat_path, "w", encoding="utf-8") as f:
                 f.write(batch_script_content)
 
-            # Kích hoạt Batch script ngầm không hiển thị cửa sổ CMD
-            startupinfo = None
-            if sys.platform == "win32":
-                startupinfo = subprocess.STARTUPINFO()
-                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-
+            # 3. Kích hoạt Batch script ngầm không hiển thị cửa sổ CMD
             subprocess.Popen(
-                ["cmd.exe", "/c", str(bat_path)],
-                startupinfo=startupinfo
+                ["cmd.exe", "/c", bat_path],
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
             )
 
             if progress_callback:
-                progress_callback(100, "🎉 Hoàn tất! Ứng dụng sẽ khởi động lại với bản mới nhất!")
+                progress_callback(100, "🎉 Hoàn tất! Ứng dụng sẽ tự động khởi động lại!")
 
-            # Thoát ứng dụng hiện tại để Inno Setup Silent Installer tiến hành đè bản mới
+            # 4. Thoát ứng dụng hiện tại để Batch Silent Installer tiến hành nâng cấp
             sys.exit(0)
             return True
 
         except Exception as e:
-            print(f"[DTA AutoUpdate Error] Lỗi tải và cài đặt cập nhật: {e}")
+            print(f"[Silent Update Fail] {e}")
             return False
 
 

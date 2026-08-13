@@ -1,32 +1,31 @@
-name: Package and Release App
+name: Build & Release Executable
 
 on:
   repository_dispatch:
-    types: [build-exe-release]
+    types: [build-release, build-exe-release]
 
 jobs:
-  build-and-release:
+  build:
     runs-on: windows-latest
-
     steps:
-      - name: Checkout Code from Private Repo
+      - name: Checkout Private Source Code
         uses: actions/checkout@v4
         with:
           repository: TruongAnh2706/DTA-VideoUnify-Core
           token: ${{ secrets.PRIVATE_REPO_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.version }}
+          ref: ${{ github.event.client_payload.ref || github.event.client_payload.version }}
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install Dependencies
         run: |
-          pip install -r requirements.txt
-          pip install pyinstaller
+          python -m pip install --upgrade pip
+          pip install pyinstaller httpx packaging PyQt6 requests
 
-      - name: Build Executable with PyInstaller
+      - name: Build with PyInstaller
         run: |
           pyinstaller --noconfirm --onedir --windowed --icon=logo.ico --name="DTA_VideoUnify_Pro" --add-data="logo.png;." --add-data="logo.ico;." main.py
 
@@ -35,13 +34,13 @@ jobs:
 
       - name: Compile Inno Setup Installer
         run: |
-          iscc setup_script.iss /DAppVersion=${{ github.event.client_payload.version }}
+          iscc setup_script.iss
 
-      - name: Publish to GitHub Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.client_payload.version }}
-          name: "Release ${{ github.event.client_payload.version }}"
+          tag_name: ${{ github.event.client_payload.ref || github.event.client_payload.version }}
+          name: "DTA VideoUnify Pro ${{ github.event.client_payload.ref || github.event.client_payload.version }}"
           files: Output/DTA_VideoUnify_Pro_Setup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
