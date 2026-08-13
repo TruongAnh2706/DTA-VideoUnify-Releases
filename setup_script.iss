@@ -3,7 +3,7 @@
 ; Phát triển bởi DTA Studio - Chủ quản: Đức Trường
 ; Email: ductruong.onl@gmail.com | Zalo/SĐT: 0962775506
 ; Website: https://dta-studio.vercel.app/
-; Fixed Desktop & Start Menu Shortcut Icon mapping to Exe Resource
+; Portable Relative Paths Fix for GitHub Actions CI/CD
 ; =========================================================
 
 #define MyAppName "DTA VideoUnify Pro"
@@ -11,7 +11,7 @@
 #define MyAppPublisher "DTA Studio - Đức Trường"
 #define MyAppURL "https://dta-studio.vercel.app/"
 #define MyAppExeName "DTA_VideoUnify_Pro.exe"
-#define MySourceDir "d:\DTA VideoUnify"
+#define MySourceDir "."
 
 [Setup]
 AppId={{DTA-VIDEOUNIFY-PRO-ENTERPRISE-2026}}

@@ -6,6 +6,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -40,6 +43,14 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: "DTA VideoUnify Pro ${{ github.ref_name }} Enterprise"
+          body: |
+            🎉 **DTA VideoUnify Pro ${{ github.ref_name }} Enterprise**
+            
+            **Tính năng mới & Cải tiến từ DTA Studio:**
+            - ⚡ **Engine 1 Direct-Copy Concat siêu tốc**: Tốc độ gộp 100x - 500x speed (2-5 giây cho 50 phút video).
+            - 🔒 **Khắc phục lỗi Win32 File Locking & UTF-8**: Tự động giải phóng file và hỗ trợ tên Tiếng Hàn/Việt.
+            - 🖥️ **Giao diện Fullscreen Studio Dark Theme**: Tối ưu hiển thị và tự động nhớ kích thước.
+            - 📑 **Chapter Markers & Intro/Outro Stitching**: Tự động tiêm thông tin chapter MP4/MKV.
           files: Output/DTA_VideoUnify_Pro_Setup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
