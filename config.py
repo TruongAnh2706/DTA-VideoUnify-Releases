@@ -1,78 +1,62 @@
 """
-DTA VideoUnify Pro - Config & Constants
+DTA VideoUnify Pro - Application Configuration & Branding Constants
 Phát triển bởi DTA Studio - Chủ quản: Đức Trường
 Email: ductruong.onl@gmail.com | Zalo/SĐT: 0962775506
 Website: https://dta-studio.vercel.app/
-Facebook: https://www.facebook.com/phamductruong17/
-GitHub: https://github.com/TruongAnh2706
+GitHub: https://github.com/TruongAnh2706/DTA-VideoUnify-Releases
 """
 
 import os
 import sys
 
-# Branding Information
+# Application Identity
 APP_NAME = "DTA VideoUnify Pro"
-APP_VERSION = "2.3.0"
+APP_VERSION = "2.3.1"
 AUTHOR_NAME = "Đức Trường AI"
 COMPANY_NAME = "DTA Studio"
-CONTACT_EMAIL = "ductruong.onl@gmail.com"
-CONTACT_ZALO = "0962.775.506"
-WEBSITE_URL = "https://dta-studio.vercel.app/"
-FACEBOOK_URL = "https://www.facebook.com/phamductruong17/"
+PHONE_ZALO = "0962.775.506"
+EMAIL = "ductruong.onl@gmail.com"
+WEBSITE = "https://dta-studio.vercel.app/"
+COPYRIGHT_TEXT = "Phát triển bởi DTA Studio - Chủ quản: Đức Trường"
 
-COPYRIGHT_TEXT = f"Phát triển bởi {COMPANY_NAME} - Chủ quản: Đức Trường | SĐT/Zalo: {CONTACT_ZALO}"
+# GitHub Auto-Update Endpoint Config
+GITHUB_REPO_OWNER = "TruongAnh2706"
+GITHUB_REPO_NAME = "DTA-VideoUnify-Releases"
+GITHUB_RELEASES_API_URL = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/releases/latest"
 
-# Logo Asset Paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOGO_ICO_PATH = os.path.join(BASE_DIR, "logo.ico")
-LOGO_PNG_PATH = os.path.join(BASE_DIR, "logo.png")
+# File Assets Resolution
+def get_asset_path(filename: str) -> str:
+    """Returns absolute path to asset file, compatible with PyInstaller bundle."""
+    if getattr(sys, 'frozen', False):
+        base_dir = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, filename)
 
-# Supported Video Extensions
-SUPPORTED_VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".flv", ".webm", ".ts", ".m4v"}
+LOGO_PNG_PATH = get_asset_path("logo.png")
+LOGO_ICO_PATH = get_asset_path("logo.ico")
 
-# Theme Colors (Dark Cyberpunk / Glassmorphic DTA Theme)
-COLOR_BG_PRIMARY = "#121214"
-COLOR_BG_SURFACE = "#1E1E22"
-COLOR_BG_CARD = "#25252B"
-COLOR_BORDER = "#2D2D35"
-COLOR_BORDER_FOCUS = "#00FFFF"
-
-COLOR_ACCENT_NEON_BLUE = "#00FFFF"   # Primary Accent (#00FFFF)
-COLOR_ACCENT_NEON_RED = "#FF0000"    # High-contrast action (#FF0000)
-COLOR_ACCENT_ORANGE = "#FF5722"      # Action Accent
-COLOR_ACCENT_GREEN = "#00E676"       # Fast Direct Copy Ready
-COLOR_ACCENT_YELLOW = "#FFD600"      # Smart Re-encode Needed
-
-COLOR_TEXT_PRIMARY = "#EEEEEE"
-COLOR_TEXT_SECONDARY = "#AAAAAA"
-COLOR_TEXT_MUTED = "#666666"
-
-# Default Output Formats
+# Render Config Options
 OUTPUT_FORMATS = [".mp4", ".mkv", ".mov", ".avi"]
 DEFAULT_OUTPUT_FORMAT = ".mp4"
 
-# Quality Presets (Tối ưu hóa tên gọi thân thiện, dễ hiểu 100% cho người dùng)
-QUALITY_PRESETS = [
-    "🚀 Gộp Siêu Nhanh (Gốc - Không Giảm Chất Lượng)",
-    "🏎️ Card NVIDIA - GPU Nhanh (Chất Lượng Cao - CQ 18)",
-    "⚡ Card NVIDIA - GPU Nhanh (Dung Lượng Nhẹ - CQ 23)",
-    "💻 Vi Xử Lý CPU - Chuẩn Nét (Khuyên Dùng Mọi Máy - CRF 18)",
-    "⏱️ Vi Xử Lý CPU - Tốc Độ Cao (Dung Lượng Nhẹ - CRF 23)",
-    "🛡️ Tự Động Tối Ưu (Card NVIDIA -> CPU Fallback)"
-]
-
-# Resolutions
 RESOLUTIONS = [
     "Gốc (Original Source)",
-    "1080p Full HD (1920x1080)",
-    "4K Ultra HD (3840x2160)",
-    "720p HD (1280x720)"
+    "Full HD (1080p / 1920x1080)",
+    "HD (720p / 1280x720)",
+    "4K Ultra HD (2160p / 3840x2160)"
 ]
 
-# Watermark Positions
-WATERMARK_POSITIONS = [
-    "Top-Right",
-    "Bottom-Right",
-    "Top-Left",
-    "Bottom-Left"
+QUALITY_PRESETS = [
+    "⚡ Gộp Siêu Nhanh (Gốc - Không Giảm Chất Lượng)",
+    "🚀 Nhanh (NVIDIA GPU NVENC Hardware Acceleration)",
+    "⚖️ Cân Bằng (Tốc Độ & Dung Lượng Đẹp)",
+    "💻 Chuẩn CPU (Tương thích 100% mọi máy tính)",
+    "📦 Dung Lượng Nhẹ (Tối Ưu Lưu Trữ Cloud)"
 ]
+
+ASPECT_RATIOS = ["Ngang (16:9)", "Dọc (9:16)", "Vuông (1:1)"]
+
+# Subprocess & Parsing Regex Settings
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".avi", ".flv", ".wmv", ".webm", ".m4v"}
+SCANNED_DIR_BLACKLIST = {"output", "dist", "build", "temp", "tmp", ".git"}
