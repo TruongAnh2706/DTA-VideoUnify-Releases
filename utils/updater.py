@@ -28,7 +28,7 @@ class SilentUpdater:
     """
 
     PUBLIC_REPO = "TruongAnh2706/DTA-VideoUnify-Releases"
-    CURRENT_VERSION = config.APP_VERSION.split()[0]  # ví dụ "2.0.0"
+    CURRENT_VERSION = config.APP_VERSION.split()[0]  # "2.0.0"
 
     @classmethod
     def check_for_updates(cls) -> Tuple[bool, str, Optional[str], str]:
@@ -40,7 +40,7 @@ class SilentUpdater:
                 if res.status_code == 200:
                     data = res.json()
                     raw_tag = data.get("tag_name", "v1.0.0")
-                    latest_ver = raw_tag.lstrip("v").strip()
+                    latest_ver = raw_tag.lstrip("v").strip().split()[0]
                     release_notes = data.get("body", "Phiên bản nâng cấp tính năng và hiệu năng từ DTA Studio.")
 
                     # So sánh phiên bản với packaging.version
