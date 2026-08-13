@@ -326,6 +326,37 @@ QSlider::handle:horizontal:hover {
     border-radius: 8px;
 }
 
+/* Watermark Specific Sliders (Clear transparent background, no borders) */
+QSlider#WatermarkSlider {
+    background: transparent;
+    background-color: transparent;
+    border: none;
+    outline: none;
+    padding: 2px 0px;
+}
+QSlider#WatermarkSlider::groove:horizontal {
+    border: none;
+    height: 4px;
+    background: #1F2638;
+    border-radius: 2px;
+}
+QSlider#WatermarkSlider::sub-page:horizontal {
+    background: #00F2FE;
+    border-radius: 2px;
+}
+QSlider#WatermarkSlider::handle:horizontal {
+    background: #FFD100;
+    border: 1.5px solid #FFFFFF;
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+}
+QSlider#WatermarkSlider::handle:horizontal:hover {
+    background: #00F2FE;
+    border-color: #FFD100;
+}
+
 QProgressBar {
     background-color: #0B0C10;
     border: 1px solid #1F2638;

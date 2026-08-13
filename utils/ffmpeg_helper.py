@@ -1,71 +1,66 @@
 """
-DTA VideoUnify Pro - FFmpeg & FFprobe Helper Utility
+DTA VideoUnify Pro - FFmpeg Helper Utilities
 Phát triển bởi DTA Studio - Chủ quản: Đức Trường
-Includes #ffconcat version 1.0 header, Unicode/Single-quote path escaping fix & NVENC GPU detection.
+Features UTF-8 Escaping, Fast Stream Probing, Chapter Metadata Generation,
+Smart Aspect & Resolution Uniformity Checking, and NVIDIA GPU NVENC Hardware Acceleration Detection.
 """
 
 import os
 import sys
 import json
 import subprocess
-import shutil
-from typing import Dict, List, Tuple, Optional, Any
+from typing import Dict, List, Any, Tuple, Optional
 
 
 class FFmpegHelper:
-    """
-    Utility class for locating FFmpeg/FFprobe binaries, inspecting media stream
-    metadata, checking episode uniformity, detecting NVENC hardware support,
-    and constructing complex FFmpeg commands.
-    """
+    """Utility class for calling FFmpeg & FFprobe binaries safely with UTF-8 encoding."""
 
-    _nvenc_available: Optional[bool] = None
+    _has_nvenc_cache: Optional[bool] = None
 
-    @staticmethod
-    def get_binary_path(binary_name: str) -> str:
-        """Find binary executable in local bin/ folder, current directory, or system PATH."""
-        if sys.platform == "win32" and not binary_name.endswith(".exe"):
-            binary_name += ".exe"
+    @classmethod
+    def get_binaries_dir(cls) -> str:
+        """Returns the local bin/ path containing ffmpeg.exe & ffprobe.exe."""
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(base_dir, "bin")
 
-        # Check in local bin/ directory
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        bin_dir_path = os.path.join(base_dir, "bin", binary_name)
-        if os.path.exists(bin_dir_path):
-            return bin_dir_path
+    @classmethod
+    def get_binary_path(cls, name: str) -> str:
+        """Finds absolute path to ffmpeg or ffprobe executable."""
+        bin_dir = cls.get_binaries_dir()
+        exe_name = f"{name}.exe" if sys.platform == "win32" else name
+        local_path = os.path.join(bin_dir, exe_name)
 
-        # Check in current working directory
-        local_path = os.path.join(os.getcwd(), binary_name)
         if os.path.exists(local_path):
             return local_path
-
-        # Check in system PATH
-        found = shutil.which(binary_name)
-        if found:
-            return found
-
-        return binary_name
+        return name
 
     @classmethod
     def check_binaries_available(cls) -> Tuple[bool, str]:
-        """Check if both ffmpeg and ffprobe are available on the system."""
         ffmpeg_bin = cls.get_binary_path("ffmpeg")
         ffprobe_bin = cls.get_binary_path("ffprobe")
 
         try:
-            res_ff = subprocess.run([ffmpeg_bin, "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            res_fp = subprocess.run([ffprobe_bin, "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            startupinfo = None
+            if sys.platform == "win32":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+            res_ff = subprocess.run([ffmpeg_bin, "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", startupinfo=startupinfo)
+            res_fp = subprocess.run([ffprobe_bin, "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", startupinfo=startupinfo)
 
             if res_ff.returncode == 0 and res_fp.returncode == 0:
-                return True, "FFmpeg & FFprobe đã sẵn sàng."
-            return False, "Không thể khởi chạy FFmpeg hoặc FFprobe."
+                return True, "FFmpeg & FFprobe sẵn sàng!"
+            return False, "Không tìm thấy bộ chạy FFmpeg/FFprobe hợp lệ."
         except Exception as e:
-            return False, f"Lỗi tìm kiếm FFmpeg/FFprobe: {str(e)}"
+            return False, f"Lỗi kiểm tra hệ thống FFmpeg: {str(e)}"
 
     @classmethod
     def has_nvenc_support(cls) -> bool:
-        """Checks if the local system has NVIDIA GPU NVENC encoder hardware support."""
-        if cls._nvenc_available is not None:
-            return cls._nvenc_available
+        if cls._has_nvenc_cache is not None:
+            return cls._has_nvenc_cache
 
         ffmpeg_bin = cls.get_binary_path("ffmpeg")
         try:
@@ -79,19 +74,22 @@ class FFmpegHelper:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 startupinfo=startupinfo
             )
-            cls._nvenc_available = "h264_nvenc" in res.stdout
+            has_h264_nvenc = "h264_nvenc" in res.stdout
+            cls._has_nvenc_cache = has_h264_nvenc
+            return has_h264_nvenc
         except Exception:
-            cls._nvenc_available = False
-
-        return cls._nvenc_available
+            cls._has_nvenc_cache = False
+            return False
 
     @classmethod
     def probe_file(cls, file_path: str) -> Optional[Dict[str, Any]]:
-        """
-        Executes ffprobe to extract stream metadata (video/audio codecs, resolution, fps, duration).
-        """
+        if not os.path.exists(file_path):
+            return None
+
         ffprobe_bin = cls.get_binary_path("ffprobe")
         cmd = [
             ffprobe_bin,
@@ -108,8 +106,16 @@ class FFmpegHelper:
                 startupinfo = subprocess.STARTUPINFO()
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
-            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, startupinfo=startupinfo)
-            if result.returncode != 0:
+            result = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                startupinfo=startupinfo
+            )
+            if result.returncode != 0 or not result.stdout:
                 return None
 
             data = json.loads(result.stdout)
@@ -126,7 +132,6 @@ class FFmpegHelper:
             if duration == 0.0 and video_stream.get("duration"):
                 duration = float(video_stream.get("duration", 0.0))
 
-            # FPS parsing
             r_fps = video_stream.get("r_frame_rate", "30/1")
             try:
                 num, den = map(int, r_fps.split('/'))
@@ -143,9 +148,8 @@ class FFmpegHelper:
                 "fps": round(fps, 2),
                 "pix_fmt": video_stream.get("pix_fmt", "yuv420p"),
                 "a_codec": audio_stream.get("codec_name", "") if audio_stream else "none",
-                "sample_rate": int(audio_stream.get("sample_rate", 0)) if audio_stream else 0,
-                "channels": int(audio_stream.get("channels", 0)) if audio_stream else 0,
-                "has_audio": audio_stream is not None
+                "sample_rate": audio_stream.get("sample_rate", "44100") if audio_stream else "0",
+                "channels": audio_stream.get("channels", 2) if audio_stream else 0
             }
         except Exception:
             return None
@@ -153,14 +157,16 @@ class FFmpegHelper:
     @classmethod
     def check_series_uniformity(cls, metadata_list: List[Dict[str, Any]]) -> bool:
         """
-        Determines if all episodes in a series have 100% identical stream properties.
-        If true, Direct Copy (concat demuxer) can be used without re-encoding.
+        Determines if Direct Copy can be used safely.
+        For Short Dramas, matching Width, Height, and Video Codec are sufficient for Direct Copy Concat!
+        Minor FPS variances (e.g. 24 FPS vs 25 FPS) do NOT break Direct Copy Concat with +genpts.
         """
         if not metadata_list or len(metadata_list) < 2:
             return True
 
         first = metadata_list[0]
-        keys_to_compare = ["width", "height", "v_codec", "fps", "pix_fmt", "a_codec", "sample_rate", "channels"]
+        # Only check resolution and video codec for Direct Copy eligibility!
+        keys_to_compare = ["width", "height", "v_codec"]
 
         for meta in metadata_list[1:]:
             for key in keys_to_compare:
@@ -170,33 +176,22 @@ class FFmpegHelper:
 
     @classmethod
     def create_concat_demuxer_file(cls, file_paths: List[str], temp_file_path: str) -> None:
-        """
-        Writes concat text file formatted for FFmpeg concat demuxer with #ffconcat version 1.0.
-        Fixes 'Invalid data found when processing input' error caused by apostrophes (') or Unicode characters in paths.
-        """
         with open(temp_file_path, "w", encoding="utf-8") as f:
-            f.write("#ffconcat version 1.0\n")
+            f.write("ffconcat version 1.0\n")
             for p in file_paths:
-                # Normalize slashes to forward slashes for cross-platform FFmpeg compatibility
-                norm_p = p.replace("\\", "/")
-                # Escape single quotes for FFmpeg concat syntax
-                escaped_path = norm_p.replace("'", "'\\''")
+                clean_p = p.replace("\\", "/")
+                escaped_path = clean_p.replace("'", "'\\''")
                 f.write(f"file '{escaped_path}'\n")
 
     @classmethod
     def generate_chapter_metadata(cls, episodes_meta: List[Tuple[int, str, float]], meta_file_path: str, intro_offset_sec: float = 0.0) -> None:
-        """
-        Generates FFMETADATA file with chapter markers for episode boundaries.
-        episodes_meta: List of (ep_num, ep_name, duration_in_seconds)
-        intro_offset_sec: Optional Intro duration offset in seconds.
-        """
         with open(meta_file_path, "w", encoding="utf-8") as f:
             f.write(";FFMETADATA1\n")
             f.write("title=DTA VideoUnify Pro Merged Drama\n")
             f.write("artist=DTA Studio - Đức Trường\n\n")
 
             current_pts = int(intro_offset_sec * 1000)
-            timebase = 1000  # milliseconds
+            timebase = 1000
 
             if intro_offset_sec > 0:
                 f.write("[CHAPTER]\n")

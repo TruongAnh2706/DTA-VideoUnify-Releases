@@ -4,19 +4,20 @@ DTA VideoUnify Pro - Main Application Window
 Phát triển bởi DTA Studio - Chủ quản: Đức Trường
 Email: ductruong.onl@gmail.com | Zalo/SĐT: 0962775506
 Website: https://dta-studio.vercel.app/
-Includes Enhancements (Logo Watermark, Intro/Outro Stitching, Auto Chapters) & Presets Testing!
+Features High-Performance UTF-8 Concat Demuxer Engine, Auto File Unlocking,
+Auto Aspect Ratio Memory, Intro/Outro Pickers, Auto Chapters, and Silent Auto-Update Engine.
 """
 
 import os
 import sys
 import subprocess
 from typing import Dict, Any, List, Tuple
-from PyQt6.QtCore import Qt, pyqtSlot, QPoint
+from PyQt6.QtCore import Qt, pyqtSlot, QPoint, QUrl
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QTreeWidget, QTreeWidgetItem, QFileDialog, QGroupBox, QComboBox,
     QCheckBox, QProgressBar, QMessageBox, QFrame, QLineEdit, QSplitter,
-    QMenu, QDialog
+    QMenu
 )
 from PyQt6.QtGui import QIcon, QColor, QPixmap, QKeySequence, QShortcut
 
@@ -34,9 +35,8 @@ from utils.updater import UpdateCheckThread, UpdateDownloadThread
 class DTAVideoUnifyMainWindow(QMainWindow):
     """
     Main Studio Window of DTA VideoUnify Pro featuring 3-column Layout,
-    Interactive 4-Corner Resizable & Draggable Watermark Overlay,
-    Cyberpunk Audio Waveform VU Meter, Async FFmpeg Batch Render Engine,
-    Item/Series Deletion from Merge Queue, and Silent Auto-Update System.
+    UTF-8 Subprocess Fix, Reset Progress Bar, Cyberpunk Audio Waveform VU Meter,
+    Async FFmpeg Batch Render Engine, Item/Series Deletion from Merge Queue, and Silent Auto-Update System.
     """
 
     def __init__(self):
@@ -69,6 +69,9 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         self._init_ui()
         self._check_environment()
         self._auto_check_updates_background()
+
+        # Default Maximized
+        self.showMaximized()
 
     def _apply_theme(self):
         self.setStyleSheet(MAIN_QSS)
@@ -136,7 +139,7 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         self.btn_select_source.clicked.connect(self._browse_source_folder)
         col1_layout.addWidget(self.btn_select_source)
 
-        # Compact Drop Zone (Max 50px height to maximize tree view space)
+        # Compact Drop Zone
         self.drop_zone = DragDropFolderZone()
         self.drop_zone.folder_dropped_signal.connect(self._on_folder_selected)
         col1_layout.addWidget(self.drop_zone)
@@ -187,7 +190,7 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         col2_layout.setContentsMargins(4, 0, 4, 0)
         col2_layout.setSpacing(10)
 
-        # Video Player Widget with Audio Waveform VU Meter & 4-Corner Handles Watermark Overlay
+        # Video Player Widget with Audio Waveform VU Meter
         self.player_widget = InteractiveVideoPlayer()
         self.player_widget.prev_requested.connect(self._play_prev_episode)
         self.player_widget.next_requested.connect(self._play_next_episode)
@@ -270,31 +273,11 @@ class DTAVideoUnifyMainWindow(QMainWindow):
 
         col3_layout.addWidget(group_output)
 
-        # CARD 2: 🎨 Đóng Dấu & Nâng Cao (Clean Enhancements)
-        group_advanced = QGroupBox("🎨 Đóng Dấu & Nâng Cao (Enhancements)")
+        # CARD 2: 🎨 Tính Năng Nâng Cao (Enhancements)
+        group_advanced = QGroupBox("🎨 Tính Năng Nâng Cao (Enhancements)")
         adv_layout = QVBoxLayout(group_advanced)
         adv_layout.setContentsMargins(14, 24, 14, 14)
-        adv_layout.setSpacing(8)
-
-        # Watermark File Picker
-        self.chk_watermark = QCheckBox("Bật đóng dấu Logo PNG (Watermark)")
-        self.chk_watermark.toggled.connect(self._on_watermark_toggled)
-        adv_layout.addWidget(self.chk_watermark)
-
-        wm_file_box = QHBoxLayout()
-        wm_file_box.setSpacing(6)
-        self.txt_wm_path = QLineEdit()
-        self.txt_wm_path.setPlaceholderText("Chọn file logo.png...")
-        self.txt_wm_path.textChanged.connect(self._on_watermark_path_changed)
-        self.btn_browse_wm = QPushButton("...")
-        self.btn_browse_wm.setObjectName("BrowseButton")
-        self.btn_browse_wm.setFixedWidth(42)
-        self.btn_browse_wm.clicked.connect(self._browse_watermark_file)
-        wm_file_box.addWidget(self.txt_wm_path)
-        wm_file_box.addWidget(self.btn_browse_wm)
-        adv_layout.addLayout(wm_file_box)
-
-        adv_layout.addSpacing(4)
+        adv_layout.setSpacing(6)
 
         # Intro Video Picker
         self.chk_intro = QCheckBox("Ghép Video Intro/Outro đầu & cuối phim")
@@ -329,7 +312,7 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         outro_box.addWidget(self.btn_browse_outro)
         adv_layout.addLayout(outro_box)
 
-        adv_layout.addSpacing(4)
+        adv_layout.addSpacing(6)
 
         # Chapter Marker Section
         self.chk_chapters = QCheckBox("Tự động tiêm Chapter Marker MP4/MKV")
@@ -343,8 +326,8 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         # Add Col 3 to Splitter
         main_splitter.addWidget(col3_widget)
 
-        # Set Splitter Proportions (30% Col1, 44% Col2, 26% Col3)
-        main_splitter.setSizes([400, 560, 360])
+        # Set Splitter Proportions
+        main_splitter.setSizes([400, 680, 380])
         root_layout.addWidget(main_splitter, stretch=1)
 
         # ==========================================
@@ -391,13 +374,11 @@ class DTAVideoUnifyMainWindow(QMainWindow):
     # ==========================================
 
     def _auto_check_updates_background(self):
-        """Khởi chạy QThread kiểm tra bản cập nhật ngầm không lag UI khi mở app."""
         self.update_check_thread = UpdateCheckThread()
         self.update_check_thread.update_found_signal.connect(self._on_update_found)
         self.update_check_thread.start()
 
     def _manual_check_updates(self):
-        """Nút bấm kiểm tra cập nhật thủ công."""
         self.btn_check_update.setText("⏳ Đang kiểm tra...")
         self.btn_check_update.setEnabled(False)
         self.log_console.append_log("🔄 Đang kiểm tra bản cập nhật mới trên DTA Studio GitHub Releases...")
@@ -416,7 +397,6 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         self.btn_check_update.setEnabled(True)
         self.log_console.append_log(f"🚀 [AUTO-UPDATE] Phát hiện phiên bản mới v{latest_ver}!")
 
-        # Dialog Cập Nhật Ngầm Chuẩn Cyberpunk Dark Studio
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle(f"🎉 Phát Hiện Bản Cập Nhật Mới v{latest_ver} - DTA Studio")
         msg_box.setIcon(QMessageBox.Icon.Information)
@@ -448,7 +428,6 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         QMessageBox.information(self, "Thông báo Cập Nhật", f"Ứng dụng DTA VideoUnify Pro (v{config.APP_VERSION}) đã ở phiên bản mới nhất!")
 
     def _start_silent_update_download(self, download_url: str):
-        """Kích hoạt QThread tải bản cập nhật ngầm và tự động cài đặt."""
         self.log_console.append_log("⚡ Đang tải bản cập nhật ngầm vào %TEMP%...")
         self.status_bar_label.setText("⚡ Đang tải bản cập nhật ngầm...")
         self.progress_bar.setValue(10)
@@ -485,26 +464,6 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         if folder:
             self.txt_out_dir.setText(folder)
             self.output_folder = folder
-
-    def _browse_watermark_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Chọn File Logo PNG Watermark", "", "Image Files (*.png)")
-        if file_path:
-            self.txt_wm_path.setText(file_path)
-            self.chk_watermark.setChecked(True)
-            self._update_player_watermark()
-
-    def _on_watermark_toggled(self, checked: bool):
-        self._update_player_watermark()
-
-    def _on_watermark_path_changed(self, text: str):
-        if text and os.path.exists(text):
-            self.chk_watermark.setChecked(True)
-        self._update_player_watermark()
-
-    def _update_player_watermark(self):
-        enabled = self.chk_watermark.isChecked()
-        path = self.txt_wm_path.text().strip()
-        self.player_widget.set_watermark(enabled, path)
 
     def _on_intro_toggled(self, checked: bool):
         self.txt_intro_path.setEnabled(checked)
@@ -547,7 +506,7 @@ class DTAVideoUnifyMainWindow(QMainWindow):
     @pyqtSlot(dict)
     def _on_scan_finished(self, scanned_data: Dict[str, Any]):
         self.scanned_series_data = scanned_data
-        self.progress_bar.setValue(100)
+        self.progress_bar.setValue(0)
         self.btn_start_merge.setEnabled(True)
 
         if not scanned_data:
@@ -564,7 +523,6 @@ class DTAVideoUnifyMainWindow(QMainWindow):
             self._preview_episode(first_series, 0, first_ep[1], first_ep[2])
 
     def _refresh_tree_display(self):
-        """Re-populates tree widget from self.scanned_series_data."""
         self.tree_widget.clear()
 
         if not self.scanned_series_data:
@@ -587,7 +545,6 @@ class DTAVideoUnifyMainWindow(QMainWindow):
             dur_str = f"{int(total_dur // 3600):02d}:{int((total_dur % 3600) // 60):02d}:{int(total_dur % 60):02d}"
             badge_text = "🟢 Direct Copy Ready" if is_uniform else "🟡 Smart Re-encode Needed"
 
-            # Top-level Series Item
             series_item = QTreeWidgetItem([f"🎬 {series_title} ({len(episodes)} tập)", f"{badge_text} | ⏱ {dur_str}"])
             series_item.setData(0, Qt.ItemDataRole.UserRole, ("series", series_title))
             series_item.setForeground(0, QColor("#00F2FE"))
@@ -629,7 +586,6 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         menu.exec(self.tree_widget.mapToGlobal(pos))
 
     def _delete_selected_tree_item(self):
-        """Deletes selected Series or Episode from the scanned_series_data queue."""
         selected_items = self.tree_widget.selectedItems()
         if not selected_items:
             return
@@ -653,7 +609,6 @@ class DTAVideoUnifyMainWindow(QMainWindow):
                     s_info = self.scanned_series_data[series_title]
                     episodes = s_info.get("episodes", [])
 
-                    # Find and remove target episode by filepath
                     new_episodes = [ep for ep in episodes if ep[1] != file_path]
                     s_info["episodes"] = new_episodes
                     s_info["total_episodes"] = len(new_episodes)
@@ -661,7 +616,6 @@ class DTAVideoUnifyMainWindow(QMainWindow):
 
                     self.log_console.append_log(f"🗑️ Đã xóa tập phim '{os.path.basename(file_path)}' khỏi bộ '{series_title}'.")
 
-                    # If no episodes left, remove series completely
                     if not new_episodes:
                         del self.scanned_series_data[series_title]
                         self.log_console.append_log(f"🗑️ Bộ phim '{series_title}' không còn tập nào và đã được tự động ẩn.")
@@ -693,12 +647,16 @@ class DTAVideoUnifyMainWindow(QMainWindow):
 
         ep_num = meta.get("ep_num", ep_idx + 1)
         title_disp = f"[{series_title}] Tập {ep_num} - {os.path.basename(file_path)}"
+
+        w = meta.get("width", 0)
+        h = meta.get("height", 0)
+        self.player_widget.auto_detect_aspect_ratio(w, h)
+
         self.player_widget.load_media(file_path, title_disp)
 
-        # Update metadata info card
         info_text = (
             f"📁 Đường dẫn: {file_path}\n"
-            f"🎥 Độ phân giải: {meta.get('width')} x {meta.get('height')} px | Tốc độ khung hình: {meta.get('fps')} FPS\n"
+            f"🎥 Độ phân giải: {w} x {h} px | Tốc độ khung hình: {meta.get('fps')} FPS\n"
             f"🎞️ Codec Video: {meta.get('v_codec')} ({meta.get('pix_fmt')}) | Codec Audio: {meta.get('a_codec')} ({meta.get('sample_rate')} Hz, {meta.get('channels')} channels)\n"
             f"⏱️ Thời lượng tập: {int(meta.get('duration', 0) // 60):02d}:{int(meta.get('duration', 0) % 60):02d} giây"
         )
@@ -723,7 +681,7 @@ class DTAVideoUnifyMainWindow(QMainWindow):
             self._preview_episode(self.selected_series_title, next_idx, ep[1], ep[2])
 
     # ==========================================
-    # BATCH RENDER EXECUTION & INTERACTIVE WATERMARK
+    # BATCH RENDER EXECUTION
     # ==========================================
 
     def _start_batch_merge(self):
@@ -731,7 +689,6 @@ class DTAVideoUnifyMainWindow(QMainWindow):
             QMessageBox.warning(self, "Chưa có dữ liệu", "Vui lòng chọn thư mục và quét danh sách tập phim trước!")
             return
 
-        # Prepare Output Directory
         out_dir = self.txt_out_dir.text().strip()
         if not out_dir:
             out_dir = self.current_source_folder
@@ -745,10 +702,11 @@ class DTAVideoUnifyMainWindow(QMainWindow):
 
         self.output_folder = out_dir
 
-        # Fetch Interactive Draggable Watermark Parameters from Player Widget
-        wm_params = self.player_widget.get_watermark_params()
+        # RELEASE QMEDIAPLAYER FILE LOCK BEFORE STARTING FFMPEG PROCESS!
+        if hasattr(self, 'player_widget') and self.player_widget:
+            self.player_widget._stop()
+            self.player_widget.player.setSource(QUrl())
 
-        # Gather Render Options (Preset, Resolution, Format, Enhancements)
         selected_ext = self.combo_format.currentText()
         selected_preset = self.combo_preset.currentText()
 
@@ -756,7 +714,6 @@ class DTAVideoUnifyMainWindow(QMainWindow):
             "output_format": selected_ext,
             "resolution": self.combo_resolution.currentText(),
             "preset": selected_preset,
-            "watermark": wm_params,
             "intro": {
                 "enabled": self.chk_intro.isChecked(),
                 "path": self.txt_intro_path.text().strip()
@@ -768,16 +725,13 @@ class DTAVideoUnifyMainWindow(QMainWindow):
             "chapters": self.chk_chapters.isChecked()
         }
 
-        # Build Render Jobs List
         render_jobs: List[Tuple[str, Dict[str, Any], str]] = []
         for title, s_info in self.scanned_series_data.items():
-            # Sanitize filename
             clean_title = "".join(c for c in title if c.isalnum() or c in (" ", "_", "-")).strip()
             out_file_name = f"{clean_title}_FULL{selected_ext}"
             out_filepath = os.path.normpath(os.path.abspath(os.path.join(out_dir, out_file_name)))
             render_jobs.append((title, s_info, out_filepath))
 
-        wm_status_str = f"Có (Tọa độ X:{int(wm_params['rel_x']*100)}%, Y:{int(wm_params['rel_y']*100)}%, Size:{int(wm_params['scale']*100)}%)" if wm_params['enabled'] else "Không"
         intro_status_str = f"Có (Intro: {os.path.basename(render_options['intro']['path']) or 'Chưa chọn'}, Outro: {os.path.basename(render_options['outro']['path']) or 'Chưa chọn'})" if render_options['intro']['enabled'] else "Không"
 
         confirm_msg = (
@@ -785,7 +739,6 @@ class DTAVideoUnifyMainWindow(QMainWindow):
             f"• Định dạng lưu: {selected_ext}\n"
             f"• Thư mục lưu: {out_dir}\n"
             f"• Preset: {selected_preset}\n"
-            f"• Đóng dấu Logo PNG: {wm_status_str}\n"
             f"• Ghép Video Intro/Outro: {intro_status_str}\n"
             f"• Tiêm Chapter Metadata: {'Có' if render_options['chapters'] else 'Không'}"
         )
@@ -793,11 +746,9 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        # Disable Controls during render
         self.btn_start_merge.setEnabled(False)
         self.btn_select_source.setEnabled(False)
 
-        # Launch Render QThread Worker
         self.render_thread = BatchRenderThread(render_jobs, render_options)
         self.render_thread.render_progress_signal.connect(self._on_render_progress)
         self.render_thread.log_signal.connect(self.log_console.append_log)
@@ -826,7 +777,6 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         self.status_bar_label.setText(status_txt)
         self.status_bar_label.setStyleSheet("color: #00E676; font-weight: 800; font-size: 14px; padding: 2px 4px;")
 
-        # Rich Finished Notification Box
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle("🎉 Render Hoàn Tất - DTA VideoUnify Pro")
         msg_box.setIcon(QMessageBox.Icon.Information)
@@ -853,7 +803,6 @@ class DTAVideoUnifyMainWindow(QMainWindow):
                 self.player_widget.load_media(self.last_rendered_file, os.path.basename(self.last_rendered_file))
 
     def _open_output_directory(self, path: str):
-        """Open Windows File Explorer to the target output directory."""
         if not path or not os.path.exists(path):
             return
         try:

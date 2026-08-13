@@ -1,209 +1,36 @@
 """
 DTA VideoUnify Pro - Interactive Video Preview Player Widget
 Phát triển bởi DTA Studio - Chủ quản: Đức Trường
-Features 16:9 / 9:16 Preview, Cyberpunk Audio VU Meter, & 4-Corner Handles Resizable/Draggable Watermark Logo Overlay!
+Features High-Performance PyQt6 Video Preview, Cyberpunk Audio Waveform VU Meter,
+Auto Aspect Ratio Detection & User Preference Memory (16:9 vs 9:16).
 """
 
 import os
-from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QPoint, QRect, QSize
+from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QEvent
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QSlider, QFrame
 )
-from PyQt6.QtGui import QPixmap, QCursor, QMouseEvent, QPainter, QColor, QPen, QBrush
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from ui.widgets.audio_meter import AudioWaveformMeter
 
 
-class DraggableWatermarkLabel(QWidget):
-    """
-    Interactive Watermark Overlay Widget featuring 4 Corner Resize Handles.
-    Supports Dragging to reposition and dragging any of the 4 corner handles to scale logo.
-    Auto-saves relative position and scale on mouse release!
-    """
-
-    position_changed_signal = pyqtSignal(float, float, float)  # rel_x, rel_y, rel_scale
-
-    HANDLE_NONE = 0
-    HANDLE_TOP_LEFT = 1
-    HANDLE_TOP_RIGHT = 2
-    HANDLE_BOTTOM_LEFT = 3
-    HANDLE_BOTTOM_RIGHT = 4
-    HANDLE_MOVE = 5
-
-    HANDLE_SIZE = 10  # 10x10 px corner handles
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setMouseTracking(True)
-        self.pixmap: QPixmap = None
-        self.active_handle = self.HANDLE_NONE
-        self.drag_start_pos = QPoint()
-        self.drag_start_rect = QRect()
-        self.aspect_ratio = 1.0
-
-        self.setVisible(False)
-
-    def set_logo_pixmap(self, pixmap: QPixmap):
-        self.pixmap = pixmap
-        if pixmap and not pixmap.isNull() and pixmap.width() > 0:
-            self.aspect_ratio = float(pixmap.height()) / float(pixmap.width())
-        self.update()
-
-    def _get_handle_at(self, pos: QPoint) -> int:
-        w = self.width()
-        h = self.height()
-        hs = self.HANDLE_SIZE
-
-        # Corner handle rectangles
-        rect_tl = QRect(0, 0, hs, hs)
-        rect_tr = QRect(w - hs, 0, hs, hs)
-        rect_bl = QRect(0, h - hs, hs, hs)
-        rect_br = QRect(w - hs, h - hs, hs, hs)
-
-        if rect_tl.contains(pos):
-            return self.HANDLE_TOP_LEFT
-        if rect_tr.contains(pos):
-            return self.HANDLE_TOP_RIGHT
-        if rect_bl.contains(pos):
-            return self.HANDLE_BOTTOM_LEFT
-        if rect_br.contains(pos):
-            return self.HANDLE_BOTTOM_RIGHT
-
-        if QRect(hs, hs, w - 2 * hs, h - 2 * hs).contains(pos) or QRect(0, 0, w, h).contains(pos):
-            return self.HANDLE_MOVE
-
-        return self.HANDLE_NONE
-
-    def mousePressEvent(self, event: QMouseEvent):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.active_handle = self._get_handle_at(event.pos())
-            self.drag_start_pos = event.globalPosition().toPoint()
-            self.drag_start_rect = self.geometry()
-            event.accept()
-
-    def mouseMoveEvent(self, event: QMouseEvent):
-        if self.active_handle == self.HANDLE_NONE:
-            handle = self._get_handle_at(event.pos())
-            if handle in (self.HANDLE_TOP_LEFT, self.HANDLE_BOTTOM_RIGHT):
-                self.setCursor(QCursor(Qt.CursorShape.SizeFDiagCursor))
-            elif handle in (self.HANDLE_TOP_RIGHT, self.HANDLE_BOTTOM_LEFT):
-                self.setCursor(QCursor(Qt.CursorShape.SizeBDiagCursor))
-            elif handle == self.HANDLE_MOVE:
-                self.setCursor(QCursor(Qt.CursorShape.SizeAllCursor))
-            else:
-                self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
-
-        elif self.active_handle == self.HANDLE_MOVE:
-            parent = self.parentWidget()
-            if parent:
-                delta = event.globalPosition().toPoint() - self.drag_start_pos
-                new_x = self.drag_start_rect.x() + delta.x()
-                new_y = self.drag_start_rect.y() + delta.y()
-
-                max_x = parent.width() - self.width()
-                max_y = parent.height() - self.height()
-                clamped_x = max(0, min(new_x, max_x))
-                clamped_y = max(0, min(new_y, max_y))
-
-                self.move(clamped_x, clamped_y)
-            event.accept()
-
-        elif self.active_handle in (self.HANDLE_TOP_LEFT, self.HANDLE_TOP_RIGHT, self.HANDLE_BOTTOM_LEFT, self.HANDLE_BOTTOM_RIGHT):
-            delta = event.globalPosition().toPoint() - self.drag_start_pos
-            orig = self.drag_start_rect
-
-            new_w = orig.width()
-            new_x = orig.x()
-            new_y = orig.y()
-
-            if self.active_handle == self.HANDLE_BOTTOM_RIGHT:
-                new_w = max(40, orig.width() + delta.x())
-            elif self.active_handle == self.HANDLE_BOTTOM_LEFT:
-                new_w = max(40, orig.width() - delta.x())
-                new_x = orig.x() + (orig.width() - new_w)
-            elif self.active_handle == self.HANDLE_TOP_RIGHT:
-                new_w = max(40, orig.width() + delta.x())
-                new_h = int(new_w * self.aspect_ratio)
-                new_y = orig.y() + (orig.height() - new_h)
-            elif self.active_handle == self.HANDLE_TOP_LEFT:
-                new_w = max(40, orig.width() - delta.x())
-                new_h = int(new_w * self.aspect_ratio)
-                new_x = orig.x() + (orig.width() - new_w)
-                new_y = orig.y() + (orig.height() - new_h)
-
-            new_h = int(new_w * self.aspect_ratio)
-            self.setGeometry(new_x, new_y, new_w, new_h)
-            event.accept()
-
-    def mouseReleaseEvent(self, event: QMouseEvent):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.active_handle = self.HANDLE_NONE
-            self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
-            # Auto save position & size on mouse release!
-            self._emit_position_changed()
-            event.accept()
-
-    def _emit_position_changed(self):
-        parent = self.parentWidget()
-        if parent and parent.width() > 0 and parent.height() > 0:
-            rel_x = float(self.x()) / parent.width()
-            rel_y = float(self.y()) / parent.height()
-            rel_scale = float(self.width()) / parent.width()
-            self.position_changed_signal.emit(rel_x, rel_y, rel_scale)
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        w = self.width()
-        h = self.height()
-
-        # Draw Logo Pixmap
-        if self.pixmap and not self.pixmap.isNull():
-            painter.drawPixmap(0, 0, w, h, self.pixmap)
-
-        # Draw Bounding Dashed Border
-        pen_border = QPen(QColor("#00F2FE"), 1.5, Qt.PenStyle.DashLine)
-        painter.setPen(pen_border)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRect(0, 0, w - 1, h - 1)
-
-        # Draw 4 Corner Handles (Cyan Square Boxes with Glow)
-        hs = self.HANDLE_SIZE
-        painter.setPen(QPen(QColor("#FFD100"), 1.5))
-        painter.setBrush(QBrush(QColor("#00F2FE")))
-
-        # Top-Left, Top-Right, Bottom-Left, Bottom-Right handle boxes
-        painter.drawRect(0, 0, hs, hs)
-        painter.drawRect(w - hs, 0, hs, hs)
-        painter.drawRect(0, h - hs, hs, hs)
-        painter.drawRect(w - hs, h - hs, hs, hs)
-
-
 class InteractiveVideoPlayer(QWidget):
     """
     Custom Interactive Preview Player Widget powered by PyQt6 QtMultimedia.
-    Features 4-Corner Handle Resizable & Draggable Watermark Overlay.
+    Features Automatic Aspect Ratio Detection & Preference Memory (16:9 vs 9:16)
+    and Cyberpunk Audio Waveform VU Meter.
     """
 
     prev_requested = pyqtSignal()
     next_requested = pyqtSignal()
-    watermark_params_changed = pyqtSignal(dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_file = ""
         self.is_portrait_mode = False
-
-        # Watermark parameters
-        self.wm_enabled = False
-        self.wm_path = ""
-        self.wm_opacity = 0.85
-        self.wm_rel_x = 0.75
-        self.wm_rel_y = 0.05
-        self.wm_rel_scale = 0.18
+        self.user_aspect_preference = None
 
         self._init_ui()
         self._init_player()
@@ -224,12 +51,12 @@ class InteractiveVideoPlayer(QWidget):
         self.btn_aspect_169 = QPushButton("🖥️ Ngang (16:9)")
         self.btn_aspect_169.setObjectName("AspectButton")
         self.btn_aspect_169.setProperty("active", "true")
-        self.btn_aspect_169.clicked.connect(lambda: self._set_aspect_ratio(False))
+        self.btn_aspect_169.clicked.connect(lambda: self._user_select_aspect_ratio(False))
 
         self.btn_aspect_916 = QPushButton("📱 Dọc (9:16)")
         self.btn_aspect_916.setObjectName("AspectButton")
         self.btn_aspect_916.setProperty("active", "false")
-        self.btn_aspect_916.clicked.connect(lambda: self._set_aspect_ratio(True))
+        self.btn_aspect_916.clicked.connect(lambda: self._user_select_aspect_ratio(True))
 
         header_layout.addWidget(self.header_label, stretch=1)
         header_layout.addWidget(self.btn_aspect_169)
@@ -243,7 +70,7 @@ class InteractiveVideoPlayer(QWidget):
         container_layout.setContentsMargins(6, 6, 6, 6)
         container_layout.setSpacing(8)
 
-        # Inner Center Box for Video Widget & Overlays
+        # Inner Center Box for Video Widget
         self.video_wrapper = QWidget()
         video_wrapper_layout = QHBoxLayout(self.video_wrapper)
         video_wrapper_layout.setContentsMargins(0, 0, 0, 0)
@@ -254,10 +81,6 @@ class InteractiveVideoPlayer(QWidget):
         self.video_widget.setStyleSheet("background-color: #000000; border-radius: 8px;")
         self.video_widget.setMinimumSize(320, 180)
         video_wrapper_layout.addWidget(self.video_widget)
-
-        # 4-Corner Handles Draggable Watermark Overlay Widget
-        self.watermark_overlay = DraggableWatermarkLabel(self.video_widget)
-        self.watermark_overlay.position_changed_signal.connect(self._on_wm_overlay_moved)
 
         # Audio Waveform VU Meter Bar
         self.audio_meter = AudioWaveformMeter()
@@ -336,68 +159,20 @@ class InteractiveVideoPlayer(QWidget):
         self.player.durationChanged.connect(self._duration_changed)
         self.player.playbackStateChanged.connect(self._on_playback_state_changed)
 
-    def set_watermark(self, enabled: bool, logo_path: str = ""):
-        """Enable or update interactive watermark overlay on top of video widget."""
-        self.wm_enabled = enabled
+    def _user_select_aspect_ratio(self, portrait: bool):
+        self.user_aspect_preference = portrait
+        self._set_aspect_ratio(portrait)
 
-        if enabled and logo_path and os.path.exists(logo_path):
-            self.wm_path = logo_path
-            pixmap = QPixmap(logo_path)
-            self.watermark_overlay.set_logo_pixmap(pixmap)
-            self.watermark_overlay.setVisible(True)
-            self._update_overlay_position_and_size()
-        else:
-            self.watermark_overlay.setVisible(False)
-
-    def _update_overlay_position_and_size(self):
-        vw = self.video_widget.width()
-        vh = self.video_widget.height()
-        if vw <= 0 or vh <= 0:
+    def auto_detect_aspect_ratio(self, width: int, height: int):
+        if self.user_aspect_preference is not None:
+            self._set_aspect_ratio(self.user_aspect_preference)
             return
 
-        w = int(vw * self.wm_rel_scale)
-        w = max(40, min(vw, w))
-        h = int(w * self.watermark_overlay.aspect_ratio)
+        if width <= 0 or height <= 0:
+            return
 
-        x = int(vw * self.wm_rel_x)
-        y = int(vh * self.wm_rel_y)
-
-        x = max(0, min(vw - w, x))
-        y = max(0, min(vh - h, y))
-
-        self.watermark_overlay.setGeometry(x, y, w, h)
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if self.wm_enabled:
-            self._update_overlay_position_and_size()
-
-    def _on_wm_overlay_moved(self, rel_x: float, rel_y: float, rel_scale: float):
-        self.wm_rel_x = rel_x
-        self.wm_rel_y = rel_y
-        self.wm_rel_scale = rel_scale
-        self._emit_wm_params()
-
-    def _emit_wm_params(self):
-        params = {
-            "enabled": self.wm_enabled,
-            "path": self.wm_path,
-            "opacity": self.wm_opacity,
-            "rel_x": self.wm_rel_x,
-            "rel_y": self.wm_rel_y,
-            "scale": self.wm_rel_scale
-        }
-        self.watermark_params_changed.emit(params)
-
-    def get_watermark_params(self) -> dict:
-        return {
-            "enabled": self.wm_enabled,
-            "path": self.wm_path,
-            "opacity": self.wm_opacity,
-            "rel_x": self.wm_rel_x,
-            "rel_y": self.wm_rel_y,
-            "scale": self.wm_rel_scale
-        }
+        is_portrait = (height > width)
+        self._set_aspect_ratio(is_portrait)
 
     def _on_playback_state_changed(self, state):
         is_playing = (state == QMediaPlayer.PlaybackState.PlayingState)
@@ -414,15 +189,13 @@ class InteractiveVideoPlayer(QWidget):
         self.btn_aspect_916.style().polish(self.btn_aspect_916)
 
         if portrait:
-            self.video_widget.setMaximumWidth(260)
+            self.video_widget.setMaximumWidth(280)
             self.video_widget.setMinimumWidth(180)
         else:
             self.video_widget.setMaximumWidth(16777215)
             self.video_widget.setMinimumWidth(320)
 
         self.video_widget.updateGeometry()
-        if self.wm_enabled:
-            self._update_overlay_position_and_size()
 
     def load_media(self, file_path: str, title_display: str = ""):
         self.current_file = file_path

@@ -12,7 +12,7 @@ import sys
 
 # Branding Information
 APP_NAME = "DTA VideoUnify Pro"
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.0"
 AUTHOR_NAME = "Đức Trường AI"
 COMPANY_NAME = "DTA Studio"
 CONTACT_EMAIL = "ductruong.onl@gmail.com"
