@@ -12,7 +12,7 @@ import sys
 
 # Branding Information
 APP_NAME = "DTA VideoUnify Pro"
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.2.0"
 AUTHOR_NAME = "Đức Trường AI"
 COMPANY_NAME = "DTA Studio"
 CONTACT_EMAIL = "ductruong.onl@gmail.com"
@@ -51,13 +51,14 @@ COLOR_TEXT_MUTED = "#666666"
 OUTPUT_FORMATS = [".mp4", ".mkv", ".mov", ".avi"]
 DEFAULT_OUTPUT_FORMAT = ".mp4"
 
-# Quality Presets
+# Quality Presets (Tối ưu hóa tên gọi thân thiện, dễ hiểu 100% cho người dùng)
 QUALITY_PRESETS = [
-    "Direct Copy (0% Loss - Siêu Nhanh)",
-    "High Quality NVENC (CQ 18 - Khuyên Dùng)",
-    "Fast NVENC (CQ 23)",
-    "CPU High Quality (libx264 - CRF 18)",
-    "CPU Fast (libx264 - CRF 23)"
+    "🚀 Gộp Siêu Nhanh (Gốc - Không Giảm Chất Lượng)",
+    "🏎️ Card NVIDIA - GPU Nhanh (Chất Lượng Cao - CQ 18)",
+    "⚡ Card NVIDIA - GPU Nhanh (Dung Lượng Nhẹ - CQ 23)",
+    "💻 Vi Xử Lý CPU - Chuẩn Nét (Khuyên Dùng Mọi Máy - CRF 18)",
+    "⏱️ Vi Xử Lý CPU - Tốc Độ Cao (Dung Lượng Nhẹ - CRF 23)",
+    "🛡️ Tự Động Tối Ưu (Card NVIDIA -> CPU Fallback)"
 ]
 
 # Resolutions

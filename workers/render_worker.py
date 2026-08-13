@@ -1,7 +1,8 @@
 """
 DTA VideoUnify Pro - Batch Render QThread Worker
 Phát triển bởi DTA Studio - Chủ quản: Đức Trường
-Fixed Output File Path Normalization (os.path.normpath) to eliminate Invalid Argument error on Windows.
+Includes Encoder Presets Testing, NVENC GPU Fallback, Intro/Outro Stitching,
+4-Corner Resizable Watermark Overlay, and Automatic Chapter Metadata Injection.
 """
 
 import os
@@ -59,7 +60,7 @@ class BatchRenderThread(QThread):
             out_file = os.path.normpath(os.path.abspath(raw_out_file))
 
             self.log_signal.emit(f"\n🎬 [{job_idx}/{total_jobs}] Đang gộp bộ phim: '{title}' -> {out_file}")
-            
+
             success = self._process_single_series(job_idx, total_jobs, title, data, out_file)
             if success:
                 success_count += 1
@@ -74,32 +75,56 @@ class BatchRenderThread(QThread):
         episodes = data.get("episodes", [])
         is_uniform = data.get("is_uniform", False)
         total_duration = data.get("total_duration", 1.0)
-        preset = self.options.get("preset", "Direct Copy (0% Loss - Siêu Nhanh)")
+        preset = self.options.get("preset", "")
+
+        watermark_opts = self.options.get("watermark", {})
+        intro_opts = self.options.get("intro", {})
+        outro_opts = self.options.get("outro", {})
+
+        wm_enabled = watermark_opts.get("enabled", False) and os.path.exists(watermark_opts.get("path", ""))
+        intro_enabled = intro_opts.get("enabled", False) and os.path.exists(intro_opts.get("path", ""))
+        outro_enabled = outro_opts.get("enabled", False) and os.path.exists(outro_opts.get("path", ""))
+
+        # Probe Intro/Outro duration if enabled
+        intro_duration = 0.0
+        if intro_enabled:
+            intro_meta = FFmpegHelper.probe_file(intro_opts.get("path", ""))
+            if intro_meta:
+                intro_duration = intro_meta.get("duration", 0.0)
+
+        outro_duration = 0.0
+        if outro_enabled:
+            outro_meta = FFmpegHelper.probe_file(outro_opts.get("path", ""))
+            if outro_meta:
+                outro_duration = outro_meta.get("duration", 0.0)
+
+        grand_total_duration = total_duration + intro_duration + outro_duration
 
         # Create temporary working folder
         temp_dir = tempfile.mkdtemp(prefix="dta_unify_")
         concat_txt = os.path.join(temp_dir, "concat.txt")
         file_paths = [ep[1] for ep in episodes]
-        
+
         # Writes escaped #ffconcat format
         FFmpegHelper.create_concat_demuxer_file(file_paths, concat_txt)
 
         # Check Chapter Metadata option
         meta_file = None
-        if self.options.get("chapters", False):
+        if self.options.get("chapters", True):
             meta_file = os.path.join(temp_dir, "chapters.ffmetadata")
             chapter_info = [(ep[0], f"Tập {ep[0]}", ep[2].get("duration", 0.0)) for ep in episodes]
-            FFmpegHelper.generate_chapter_metadata(chapter_info, meta_file)
+            FFmpegHelper.generate_chapter_metadata(chapter_info, meta_file, intro_offset_sec=intro_duration)
 
         ffmpeg_bin = FFmpegHelper.get_binary_path("ffmpeg")
 
         # Determine if Direct Copy engine can be used safely
-        use_direct_copy = is_uniform and ("Direct Copy" in preset) and not self.options.get("watermark", {}).get("enabled") and not self.options.get("intro", {}).get("enabled")
+        is_direct_copy_preset = "Gộp Siêu Nhanh" in preset or "Direct Copy" in preset
+        use_direct_copy = is_uniform and is_direct_copy_preset and not wm_enabled and not intro_enabled and not outro_enabled
 
         cmd = []
 
         if use_direct_copy:
-            self.log_signal.emit("⚡ Sử dụng Engine 1: Direct-Copy Concat (Tốc độ ánh sáng, +genpts sửa lỗi timestamp)")
+            self.log_signal.emit("⚡ Sử dụng Engine 1: Direct-Copy Concat (Tốc độ ánh sáng, 0% Loss, +genpts sửa timestamp)")
             cmd = [
                 ffmpeg_bin, "-y",
                 "-fflags", "+genpts",
@@ -113,8 +138,11 @@ class BatchRenderThread(QThread):
 
             cmd.extend(["-c", "copy", out_file])
         else:
-            self.log_signal.emit("⚙️ Sử dụng Engine 2: Smart Filtergraph Re-encode (Gộp từng input, setpts reset timestamp chống đơ hình)")
-            cmd = self._build_robust_reencode_command(ffmpeg_bin, file_paths, out_file, meta_file)
+            self.log_signal.emit("⚙️ Sử dụng Engine 2: Smart Filtergraph Re-encode (Gộp chuẩn FPS/Resolution, reset timestamp, chống đơ hình)")
+            cmd = self._build_robust_reencode_command(
+                ffmpeg_bin, file_paths, out_file, meta_file,
+                wm_opts=watermark_opts, intro_opts=intro_opts, outro_opts=outro_opts
+            )
 
         # Log command line execution
         self.log_signal.emit(f"FFmpeg Command: {' '.join(cmd)}")
@@ -158,7 +186,7 @@ class BatchRenderThread(QThread):
 
                 if line:
                     line_str = line.strip()
-                    if "frame=" in line_str or "time=" in line_str or "Error" in line_str:
+                    if "frame=" in line_str or "time=" in line_str or "Error" in line_str or "warning" in line_str.lower():
                         self.log_signal.emit(f"[{title}] {line_str}")
 
                     # Parse frame progress
@@ -176,11 +204,11 @@ class BatchRenderThread(QThread):
                         speed_val = float(spd_m.group(1))
 
                     # Calculate progress percentages
-                    series_pct = int(min(100.0, (current_render_sec / max(1.0, total_duration)) * 100))
+                    series_pct = int(min(100.0, (current_render_sec / max(1.0, grand_total_duration)) * 100))
                     overall_pct = int(((job_idx - 1) / total_jobs * 100) + (series_pct / total_jobs))
 
                     # Calculate ETA
-                    remaining_sec = max(0.0, total_duration - current_render_sec)
+                    remaining_sec = max(0.0, grand_total_duration - current_render_sec)
                     if speed_val > 0:
                         eta_sec = remaining_sec / speed_val
                         eta_str = time.strftime("%H:%M:%S", time.gmtime(eta_sec))
@@ -214,34 +242,62 @@ class BatchRenderThread(QThread):
             self.log_signal.emit(f"❌ Ngoại lệ hệ thống khi render '{title}': {str(e)}")
             return False
 
-    def _build_robust_reencode_command(self, ffmpeg_bin: str, file_paths: List[str], out_file: str, meta_file: Optional[str]) -> List[str]:
+    def _build_robust_reencode_command(
+        self,
+        ffmpeg_bin: str,
+        file_paths: List[str],
+        out_file: str,
+        meta_file: Optional[str],
+        wm_opts: Dict[str, Any],
+        intro_opts: Dict[str, Any],
+        outro_opts: Dict[str, Any]
+    ) -> List[str]:
         """
-        Constructs a robust FFmpeg filtergraph re-encoding command.
+        Constructs a robust FFmpeg filtergraph re-encoding command with full Preset Encoder & Enhancements support.
         """
         res_setting = self.options.get("resolution", "Gốc (Original Source)")
-        preset_setting = self.options.get("preset", "High Quality NVENC (CQ 18 - Khuyên Dùng)")
-        watermark = self.options.get("watermark", {})
+        preset_setting = self.options.get("preset", "")
 
         cmd = [ffmpeg_bin, "-y"]
 
-        # Add all episode input files individually
-        for path in file_paths:
+        # 1. Prepare All Video Stream Inputs (Intro -> Episodes -> Outro)
+        video_stream_paths = []
+
+        intro_enabled = intro_opts.get("enabled", False) and os.path.exists(intro_opts.get("path", ""))
+        if intro_enabled:
+            video_stream_paths.append(intro_opts.get("path"))
+            self.log_signal.emit(f"🎬 [Intro] Đã chèn Video Intro đầu phim: {os.path.basename(intro_opts.get('path'))}")
+
+        video_stream_paths.extend(file_paths)
+
+        outro_enabled = outro_opts.get("enabled", False) and os.path.exists(outro_opts.get("path", ""))
+        if outro_enabled:
+            video_stream_paths.append(outro_opts.get("path"))
+            self.log_signal.emit(f"🎬 [Outro] Đã chèn Video Outro cuối phim: {os.path.basename(outro_opts.get('path'))}")
+
+        for path in video_stream_paths:
             cmd.extend(["-i", path])
 
-        num_inputs = len(file_paths)
-        inputs_count = num_inputs
+        num_video_inputs = len(video_stream_paths)
+        inputs_count = num_video_inputs
 
-        # Add watermark input if enabled
-        wm_enabled = watermark.get("enabled", False) and os.path.exists(watermark.get("path", ""))
+        # 2. Add Watermark Input if enabled
+        wm_enabled = wm_opts.get("enabled", False) and os.path.exists(wm_opts.get("path", ""))
         wm_input_index = -1
         if wm_enabled:
-            cmd.extend(["-i", watermark.get("path")])
+            cmd.extend(["-i", wm_opts.get("path")])
             wm_input_index = inputs_count
             inputs_count += 1
+            self.log_signal.emit(f"🎨 [Watermark] Đã chèn Logo Watermark: {os.path.basename(wm_opts.get('path'))}")
 
-        # Add chapter metadata input
+        # 3. Add Chapter Metadata Input if enabled
+        meta_input_index = -1
         if meta_file and os.path.exists(meta_file):
-            cmd.extend(["-i", meta_file, "-map_metadata", str(inputs_count)])
+            cmd.extend(["-i", meta_file])
+            meta_input_index = inputs_count
+            inputs_count += 1
+            cmd.extend(["-map_metadata", str(meta_input_index)])
+            self.log_signal.emit("📑 [Chapter Marker] Đã tiêm thông tin Chapter Markers vào video")
 
         # Target resolution calculation
         target_res = "1920:1080"
@@ -255,8 +311,8 @@ class BatchRenderThread(QThread):
         filter_chains = []
         concat_inputs = ""
 
-        # Process each episode input to unify resolution, FPS, and reset timestamps
-        for i in range(num_inputs):
+        # Process each video stream input (Intro + Episodes + Outro)
+        for i in range(num_video_inputs):
             v_in = f"[{i}:v]"
             a_in = f"[{i}:a]"
             v_out = f"[v{i}]"
@@ -267,16 +323,16 @@ class BatchRenderThread(QThread):
             concat_inputs += f"{v_out}{a_out}"
 
         # Concat all normalized streams together
-        filter_chains.append(f"{concat_inputs}concat=n={num_inputs}:v=1:a=1[v_merged][a_merged]")
+        filter_chains.append(f"{concat_inputs}concat=n={num_video_inputs}:v=1:a=1[v_merged][a_merged]")
 
         final_v_label = "[v_merged]"
 
         # Apply interactive Watermark Overlay if enabled
         if wm_enabled:
-            rel_x = watermark.get("rel_x", 0.75)
-            rel_y = watermark.get("rel_y", 0.05)
-            scale = watermark.get("scale", 0.18)
-            opacity = watermark.get("opacity", 0.8)
+            rel_x = wm_opts.get("rel_x", 0.75)
+            rel_y = wm_opts.get("rel_y", 0.05)
+            scale = wm_opts.get("scale", 0.18)
+            opacity = wm_opts.get("opacity", 0.8)
 
             wm_filter = f"[{wm_input_index}:v]scale=main_w*{scale}:-1,format=rgba,colorchannelmixer=aa={opacity}[wm_scaled];[v_merged][wm_scaled]overlay=main_w*{rel_x}:main_h*{rel_y}[v_wm]"
             filter_chains.append(wm_filter)
@@ -286,14 +342,38 @@ class BatchRenderThread(QThread):
 
         cmd.extend(["-filter_complex", filter_complex_str, "-map", final_v_label, "-map", "[a_merged]"])
 
-        # Encoder selection (NVENC GPU vs CPU)
-        if "NVENC" in preset_setting:
-            cmd.extend(["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "18"])
+        # Encoder selection (GPU NVENC vs CPU libx264 with NVENC Fallback)
+        has_nvenc = FFmpegHelper.has_nvenc_support()
+
+        use_nvenc = ("NVIDIA" in preset_setting or "NVENC" in preset_setting)
+
+        # Handle Auto Mode
+        if "Tự Động Tối Ưu" in preset_setting:
+            use_nvenc = has_nvenc
+
+        if use_nvenc:
+            if has_nvenc:
+                cq_val = "23" if ("Dung Lượng Nhẹ" in preset_setting or "CQ 23" in preset_setting) else "18"
+                cmd.extend(["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", cq_val])
+                self.log_signal.emit(f"🚀 Sử dụng GPU NVENC Encoder (CQ {cq_val}) - Tốc độ cao!")
+            else:
+                crf_val = "23" if ("Dung Lượng Nhẹ" in preset_setting or "CQ 23" in preset_setting) else "18"
+                self.log_signal.emit(f"⚠️ [CẢNH BÁO] Máy không hỗ trợ GPU NVENC. Tự động chuyển sang CPU libx264 (CRF {crf_val}) an toàn!")
+                cmd.extend(["-c:v", "libx264", "-preset", "medium", "-crf", crf_val])
         else:
-            cmd.extend(["-c:v", "libx264", "-preset", "medium", "-crf", "18"])
+            crf_val = "23" if ("Tốc Độ Cao" in preset_setting or "CRF 23" in preset_setting) else "18"
+            preset_speed = "fast" if ("Tốc Độ Cao" in preset_setting or "CRF 23" in preset_setting) else "medium"
+            cmd.extend(["-c:v", "libx264", "-preset", preset_speed, "-crf", crf_val])
+            self.log_signal.emit(f"💻 Sử dụng CPU libx264 Encoder (CRF {crf_val}, Preset: {preset_speed}) - Tương thích 100%!")
+
+        # Ensure universal pixel format compatibility
+        cmd.extend(["-pix_fmt", "yuv420p"])
 
         # Audio normalization & encoding
         cmd.extend(["-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11"])
+
+        # Queue size buffer to avoid muxing queue overflow
+        cmd.extend(["-max_muxing_queue_size", "1024"])
 
         cmd.append(out_file)
         return cmd

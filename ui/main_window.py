@@ -4,7 +4,7 @@ DTA VideoUnify Pro - Main Application Window
 Phát triển bởi DTA Studio - Chủ quản: Đức Trường
 Email: ductruong.onl@gmail.com | Zalo/SĐT: 0962775506
 Website: https://dta-studio.vercel.app/
-Includes Project Removal & Silent Auto-Update Engine (GitHub Releases API)!
+Includes Enhancements (Logo Watermark, Intro/Outro Stitching, Auto Chapters) & Presets Testing!
 """
 
 import os
@@ -106,7 +106,7 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         else:
             logo_img_label.setText("🎬")
             logo_img_label.setStyleSheet("font-size: 24px;")
-        
+
         logo_title = QLabel(config.APP_NAME)
         logo_title.setObjectName("AppLogoTitle")
 
@@ -215,13 +215,13 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         col3_widget.setObjectName("SidebarFrame")
         col3_layout = QVBoxLayout(col3_widget)
         col3_layout.setContentsMargins(12, 14, 12, 14)
-        col3_layout.setSpacing(14)
+        col3_layout.setSpacing(10)
 
         # CARD 1: ⚙️ Cấu Hình Đầu Ra (Output Settings)
         group_output = QGroupBox("⚙️ Cấu Hình Đầu Ra (Output Settings)")
         out_layout = QVBoxLayout(group_output)
-        out_layout.setContentsMargins(14, 26, 14, 16)
-        out_layout.setSpacing(8)
+        out_layout.setContentsMargins(14, 24, 14, 14)
+        out_layout.setSpacing(6)
 
         # 1. Format
         lbl_fmt = QLabel("Định dạng lưu Video:")
@@ -268,13 +268,13 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         dir_box.addWidget(self.btn_browse_out)
         out_layout.addLayout(dir_box)
 
-        col3_layout.addWidget(group_output, stretch=1)
+        col3_layout.addWidget(group_output)
 
         # CARD 2: 🎨 Đóng Dấu & Nâng Cao (Clean Enhancements)
         group_advanced = QGroupBox("🎨 Đóng Dấu & Nâng Cao (Enhancements)")
         adv_layout = QVBoxLayout(group_advanced)
-        adv_layout.setContentsMargins(14, 26, 14, 16)
-        adv_layout.setSpacing(12)
+        adv_layout.setContentsMargins(14, 24, 14, 14)
+        adv_layout.setSpacing(8)
 
         # Watermark File Picker
         self.chk_watermark = QCheckBox("Bật đóng dấu Logo PNG (Watermark)")
@@ -294,12 +294,44 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         wm_file_box.addWidget(self.btn_browse_wm)
         adv_layout.addLayout(wm_file_box)
 
-        adv_layout.addSpacing(8)
+        adv_layout.addSpacing(4)
 
-        # Intro/Outro & Chapter Section
+        # Intro Video Picker
         self.chk_intro = QCheckBox("Ghép Video Intro/Outro đầu & cuối phim")
+        self.chk_intro.toggled.connect(self._on_intro_toggled)
         adv_layout.addWidget(self.chk_intro)
 
+        intro_box = QHBoxLayout()
+        intro_box.setSpacing(6)
+        self.txt_intro_path = QLineEdit()
+        self.txt_intro_path.setPlaceholderText("Chọn file Intro Video (.mp4)...")
+        self.txt_intro_path.setEnabled(False)
+        self.btn_browse_intro = QPushButton("Intro")
+        self.btn_browse_intro.setObjectName("BrowseButton")
+        self.btn_browse_intro.setFixedWidth(52)
+        self.btn_browse_intro.setEnabled(False)
+        self.btn_browse_intro.clicked.connect(self._browse_intro_file)
+        intro_box.addWidget(self.txt_intro_path)
+        intro_box.addWidget(self.btn_browse_intro)
+        adv_layout.addLayout(intro_box)
+
+        outro_box = QHBoxLayout()
+        outro_box.setSpacing(6)
+        self.txt_outro_path = QLineEdit()
+        self.txt_outro_path.setPlaceholderText("Chọn file Outro Video (.mp4)...")
+        self.txt_outro_path.setEnabled(False)
+        self.btn_browse_outro = QPushButton("Outro")
+        self.btn_browse_outro.setObjectName("BrowseButton")
+        self.btn_browse_outro.setFixedWidth(52)
+        self.btn_browse_outro.setEnabled(False)
+        self.btn_browse_outro.clicked.connect(self._browse_outro_file)
+        outro_box.addWidget(self.txt_outro_path)
+        outro_box.addWidget(self.btn_browse_outro)
+        adv_layout.addLayout(outro_box)
+
+        adv_layout.addSpacing(4)
+
+        # Chapter Marker Section
         self.chk_chapters = QCheckBox("Tự động tiêm Chapter Marker MP4/MKV")
         self.chk_chapters.setChecked(True)
         adv_layout.addWidget(self.chk_chapters)
@@ -350,7 +382,9 @@ class DTAVideoUnifyMainWindow(QMainWindow):
             )
             self.log_console.append_log(f"⚠️ [CẢNH BÁO] {msg}")
         else:
-            self.log_console.append_log("✅ Hệ thống FFmpeg và FFprobe đã sẵn sàng hoạt động!")
+            has_nvenc = FFmpegHelper.has_nvenc_support()
+            gpu_str = "Hỗ trợ NVIDIA GPU NVENC" if has_nvenc else "Vi xử lý CPU (Không phát hiện NVIDIA GPU)"
+            self.log_console.append_log(f"✅ Hệ thống FFmpeg & FFprobe đã sẵn sàng! ({gpu_str})")
 
     # ==========================================
     # SILENT AUTO-UPDATE ENGINE INTEGRATION
@@ -471,6 +505,24 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         enabled = self.chk_watermark.isChecked()
         path = self.txt_wm_path.text().strip()
         self.player_widget.set_watermark(enabled, path)
+
+    def _on_intro_toggled(self, checked: bool):
+        self.txt_intro_path.setEnabled(checked)
+        self.btn_browse_intro.setEnabled(checked)
+        self.txt_outro_path.setEnabled(checked)
+        self.btn_browse_outro.setEnabled(checked)
+
+    def _browse_intro_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Chọn File Video Intro Đầu Phim", "", "Video Files (*.mp4 *.mkv *.mov *.avi)")
+        if file_path:
+            self.txt_intro_path.setText(file_path)
+            self.chk_intro.setChecked(True)
+
+    def _browse_outro_file(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Chọn File Video Outro Cuối Phim", "", "Video Files (*.mp4 *.mkv *.mov *.avi)")
+        if file_path:
+            self.txt_outro_path.setText(file_path)
+            self.chk_intro.setChecked(True)
 
     def _on_folder_selected(self, folder_path: str):
         self.current_source_folder = folder_path
@@ -696,15 +748,22 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         # Fetch Interactive Draggable Watermark Parameters from Player Widget
         wm_params = self.player_widget.get_watermark_params()
 
-        # Gather Render Options
+        # Gather Render Options (Preset, Resolution, Format, Enhancements)
         selected_ext = self.combo_format.currentText()
+        selected_preset = self.combo_preset.currentText()
+
         render_options = {
             "output_format": selected_ext,
             "resolution": self.combo_resolution.currentText(),
-            "preset": self.combo_preset.currentText(),
+            "preset": selected_preset,
             "watermark": wm_params,
             "intro": {
-                "enabled": self.chk_intro.isChecked()
+                "enabled": self.chk_intro.isChecked(),
+                "path": self.txt_intro_path.text().strip()
+            },
+            "outro": {
+                "enabled": self.chk_intro.isChecked(),
+                "path": self.txt_outro_path.text().strip()
             },
             "chapters": self.chk_chapters.isChecked()
         }
@@ -719,13 +778,15 @@ class DTAVideoUnifyMainWindow(QMainWindow):
             render_jobs.append((title, s_info, out_filepath))
 
         wm_status_str = f"Có (Tọa độ X:{int(wm_params['rel_x']*100)}%, Y:{int(wm_params['rel_y']*100)}%, Size:{int(wm_params['scale']*100)}%)" if wm_params['enabled'] else "Không"
+        intro_status_str = f"Có (Intro: {os.path.basename(render_options['intro']['path']) or 'Chưa chọn'}, Outro: {os.path.basename(render_options['outro']['path']) or 'Chưa chọn'})" if render_options['intro']['enabled'] else "Không"
 
         confirm_msg = (
             f"Bạn có chắc muốn bắt đầu gộp hàng loạt {len(render_jobs)} bộ phim?\n\n"
             f"• Định dạng lưu: {selected_ext}\n"
             f"• Thư mục lưu: {out_dir}\n"
-            f"• Preset: {render_options['preset']}\n"
+            f"• Preset: {selected_preset}\n"
             f"• Đóng dấu Logo PNG: {wm_status_str}\n"
+            f"• Ghép Video Intro/Outro: {intro_status_str}\n"
             f"• Tiêm Chapter Metadata: {'Có' if render_options['chapters'] else 'Không'}"
         )
         reply = QMessageBox.question(self, "Xác nhận Batch Merge", confirm_msg, QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -780,7 +841,7 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         btn_play_video = None
         if self.last_rendered_file and os.path.exists(self.last_rendered_file):
             btn_play_video = msg_box.addButton("🎬 Xem Video Vừa Gộp", QMessageBox.ButtonRole.ActionRole)
-        
+
         btn_close = msg_box.addButton("Đóng", QMessageBox.ButtonRole.RejectRole)
 
         msg_box.exec()

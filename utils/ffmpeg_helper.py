@@ -1,7 +1,7 @@
 """
 DTA VideoUnify Pro - FFmpeg & FFprobe Helper Utility
 Phát triển bởi DTA Studio - Chủ quản: Đức Trường
-Includes #ffconcat version 1.0 header & Unicode/Single-quote path escaping fix.
+Includes #ffconcat version 1.0 header, Unicode/Single-quote path escaping fix & NVENC GPU detection.
 """
 
 import os
@@ -15,8 +15,11 @@ from typing import Dict, List, Tuple, Optional, Any
 class FFmpegHelper:
     """
     Utility class for locating FFmpeg/FFprobe binaries, inspecting media stream
-    metadata, checking episode uniformity, and constructing complex FFmpeg commands.
+    metadata, checking episode uniformity, detecting NVENC hardware support,
+    and constructing complex FFmpeg commands.
     """
+
+    _nvenc_available: Optional[bool] = None
 
     @staticmethod
     def get_binary_path(binary_name: str) -> str:
@@ -57,6 +60,32 @@ class FFmpegHelper:
             return False, "Không thể khởi chạy FFmpeg hoặc FFprobe."
         except Exception as e:
             return False, f"Lỗi tìm kiếm FFmpeg/FFprobe: {str(e)}"
+
+    @classmethod
+    def has_nvenc_support(cls) -> bool:
+        """Checks if the local system has NVIDIA GPU NVENC encoder hardware support."""
+        if cls._nvenc_available is not None:
+            return cls._nvenc_available
+
+        ffmpeg_bin = cls.get_binary_path("ffmpeg")
+        try:
+            startupinfo = None
+            if sys.platform == "win32":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+            res = subprocess.run(
+                [ffmpeg_bin, "-hide_banner", "-encoders"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                startupinfo=startupinfo
+            )
+            cls._nvenc_available = "h264_nvenc" in res.stdout
+        except Exception:
+            cls._nvenc_available = False
+
+        return cls._nvenc_available
 
     @classmethod
     def probe_file(cls, file_path: str) -> Optional[Dict[str, Any]]:
@@ -155,18 +184,26 @@ class FFmpegHelper:
                 f.write(f"file '{escaped_path}'\n")
 
     @classmethod
-    def generate_chapter_metadata(cls, episodes_meta: List[Tuple[int, str, float]], meta_file_path: str) -> None:
+    def generate_chapter_metadata(cls, episodes_meta: List[Tuple[int, str, float]], meta_file_path: str, intro_offset_sec: float = 0.0) -> None:
         """
         Generates FFMETADATA file with chapter markers for episode boundaries.
         episodes_meta: List of (ep_num, ep_name, duration_in_seconds)
+        intro_offset_sec: Optional Intro duration offset in seconds.
         """
         with open(meta_file_path, "w", encoding="utf-8") as f:
             f.write(";FFMETADATA1\n")
             f.write("title=DTA VideoUnify Pro Merged Drama\n")
             f.write("artist=DTA Studio - Đức Trường\n\n")
 
-            current_pts = 0
+            current_pts = int(intro_offset_sec * 1000)
             timebase = 1000  # milliseconds
+
+            if intro_offset_sec > 0:
+                f.write("[CHAPTER]\n")
+                f.write(f"TIMEBASE=1/{timebase}\n")
+                f.write(f"START=0\n")
+                f.write(f"END={current_pts}\n")
+                f.write("title=Intro\n\n")
 
             for ep_num, name, dur in episodes_meta:
                 dur_ms = int(dur * 1000)
