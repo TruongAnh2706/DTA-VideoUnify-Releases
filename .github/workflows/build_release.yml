@@ -1,19 +1,18 @@
-name: Build & Release Executable
+name: Build and Release Executable
 
 on:
-  repository_dispatch:
-    types: [build-release, build-exe-release]
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
-      - name: Checkout Private Source Code
+      - name: Checkout Code
         uses: actions/checkout@v4
-        with:
-          repository: TruongAnh2706/DTA-VideoUnify-Core
-          token: ${{ secrets.PRIVATE_REPO_READ_TOKEN }}
-          ref: ${{ github.event.client_payload.ref || github.event.client_payload.version }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,11 +35,11 @@ jobs:
         run: |
           iscc setup_script.iss
 
-      - name: Create GitHub Release
+      - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.client_payload.ref || github.event.client_payload.version }}
-          name: "DTA VideoUnify Pro ${{ github.event.client_payload.ref || github.event.client_payload.version }}"
+          tag_name: ${{ github.ref_name }}
+          name: "DTA VideoUnify Pro ${{ github.ref_name }} Enterprise"
           files: Output/DTA_VideoUnify_Pro_Setup.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
