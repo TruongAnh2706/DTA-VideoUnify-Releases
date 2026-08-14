@@ -1,40 +1,63 @@
 """
 DTA VideoUnify Pro - FFmpeg Helper Utilities
 Phát triển bởi DTA Studio - Chủ quản: Đức Trường
-Features UTF-8 Escaping, Fast Stream Probing, Chapter Metadata Generation,
+Features Multi-Path Binaries Resolution, UTF-8 Escaping, Fast Stream Probing, Chapter Metadata Generation,
 Smart Aspect & Resolution Uniformity Checking, and NVIDIA GPU NVENC Hardware Acceleration Detection.
 """
 
 import os
 import sys
 import json
+import shutil
 import subprocess
 from typing import Dict, List, Any, Tuple, Optional
 
 
 class FFmpegHelper:
-    """Utility class for calling FFmpeg & FFprobe binaries safely with UTF-8 encoding."""
+    """Utility class for finding and calling FFmpeg & FFprobe binaries safely with UTF-8 encoding."""
 
     _has_nvenc_cache: Optional[bool] = None
 
     @classmethod
-    def get_binaries_dir(cls) -> str:
-        """Returns the local bin/ path containing ffmpeg.exe & ffprobe.exe."""
-        if getattr(sys, 'frozen', False):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return os.path.join(base_dir, "bin")
-
-    @classmethod
     def get_binary_path(cls, name: str) -> str:
-        """Finds absolute path to ffmpeg or ffprobe executable."""
-        bin_dir = cls.get_binaries_dir()
+        """Finds absolute path to ffmpeg or ffprobe executable across all local directories and PATH."""
         exe_name = f"{name}.exe" if sys.platform == "win32" else name
-        local_path = os.path.join(bin_dir, exe_name)
 
-        if os.path.exists(local_path):
-            return local_path
+        # Candidate paths to search
+        possible_paths = []
+
+        # 1. Check PyInstaller temp directory (_MEIPASS)
+        if getattr(sys, 'frozen', False):
+            base_dir = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+            possible_paths.append(os.path.join(base_dir, exe_name))
+            possible_paths.append(os.path.join(base_dir, "bin", exe_name))
+            possible_paths.append(os.path.join(os.path.dirname(sys.executable), exe_name))
+            possible_paths.append(os.path.join(os.path.dirname(sys.executable), "bin", exe_name))
+
+        # 2. Check source project bin/ directory
+        source_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        possible_paths.append(os.path.join(source_dir, "bin", exe_name))
+        possible_paths.append(os.path.join(source_dir, exe_name))
+
+        # 3. Check Current Working Directory
+        possible_paths.append(os.path.join(os.getcwd(), "bin", exe_name))
+        possible_paths.append(os.path.join(os.getcwd(), exe_name))
+
+        # 4. Check LocalAppData App folder
+        local_appdata = os.getenv("LOCALAPPDATA", "")
+        if local_appdata:
+            possible_paths.append(os.path.join(local_appdata, "Programs", "DTA Studio", "DTA VideoUnify Pro", "bin", exe_name))
+            possible_paths.append(os.path.join(local_appdata, "DTA Studio", "ffmpeg", exe_name))
+
+        for path in possible_paths:
+            if os.path.exists(path) and os.path.isfile(path):
+                return os.path.normpath(path)
+
+        # 5. Search in System PATH using shutil.which
+        path_in_env = shutil.which(name)
+        if path_in_env:
+            return path_in_env
+
         return name
 
     @classmethod
@@ -52,8 +75,8 @@ class FFmpegHelper:
             res_fp = subprocess.run([ffprobe_bin, "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", startupinfo=startupinfo)
 
             if res_ff.returncode == 0 and res_fp.returncode == 0:
-                return True, "FFmpeg & FFprobe sẵn sàng!"
-            return False, "Không tìm thấy bộ chạy FFmpeg/FFprobe hợp lệ."
+                return True, f"FFmpeg & FFprobe sẵn sàng! ({ffmpeg_bin})"
+            return False, f"Không thể khởi chạy FFmpeg ({ffmpeg_bin}). [WinError 2] Tệp không tồn tại."
         except Exception as e:
             return False, f"Lỗi kiểm tra hệ thống FFmpeg: {str(e)}"
 
