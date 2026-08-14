@@ -25,7 +25,7 @@ class SplashInitWorker(QThread):
     def run(self):
         try:
             self.progress_signal.emit(10, "Đang kiểm tra môi trường hệ thống & FFmpeg binaries...")
-            QThread.msleep(500)
+            QThread.msleep(400)
 
             need_download = FFmpegDownloader.check_need_download()
 
@@ -38,15 +38,15 @@ class SplashInitWorker(QThread):
                 success = FFmpegDownloader.download_and_extract(_on_download_progress)
                 if success:
                     self.progress_signal.emit(100, "✅ Đã tải và cài đặt FFmpeg thành công! Đang khởi chạy...")
-                    QThread.msleep(700)
+                    QThread.msleep(500)
                     self.finished_signal.emit(True, "Sẵn sàng")
                 else:
                     self.finished_signal.emit(False, "Không thể tải tự động FFmpeg. Bạn vẫn có thể mở app xem thử.")
             else:
                 self.progress_signal.emit(80, "✅ FFmpeg & FFprobe đã sẵn sàng trong hệ thống!")
-                QThread.msleep(500)
-                self.progress_signal.emit(100, "Đang mở DTA VideoUnify Pro...")
                 QThread.msleep(300)
+                self.progress_signal.emit(100, "Đang mở DTA VideoUnify Pro...")
+                QThread.msleep(200)
                 self.finished_signal.emit(True, "Sẵn sàng")
 
         except Exception as e:
@@ -63,7 +63,7 @@ class DTASplashScreen(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.SplashScreen)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.resize(520, 420)
 
@@ -234,4 +234,6 @@ class DTASplashScreen(QWidget):
     def _on_finished(self, success: bool, msg: str):
         self.border_timer.stop()
         self.app_ready_signal.emit()
-        self.close()
+        # Hide splash without triggering premature app termination
+        self.hide()
+        self.deleteLater()
