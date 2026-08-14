@@ -11,7 +11,7 @@ import sys
 
 # Application Identity
 APP_NAME = "DTA VideoUnify Pro"
-APP_VERSION = "2.3.1"
+APP_VERSION = "2.3.2"
 AUTHOR_NAME = "Đức Trường AI"
 COMPANY_NAME = "DTA Studio"
 PHONE_ZALO = "0962.775.506"
