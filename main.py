@@ -3,6 +3,7 @@ DTA VideoUnify Pro - Entry Point
 Phát triển bởi DTA Studio - Chủ quản: Đức Trường
 Email: ductruong.onl@gmail.com | Zalo/SĐT: 0962775506
 Website: https://dta-studio.vercel.app/
+Smooth Splash Screen to Main Window Transition Engine
 """
 
 import sys
@@ -47,6 +48,9 @@ def main():
         nonlocal main_window
         main_window = DTAVideoUnifyMainWindow()
         main_window.show()
+        # Immediately close splash screen once main window is visible
+        splash.finish(main_window)
+        splash.close()
 
     splash.app_ready_signal.connect(launch_main_app)
     splash.show()

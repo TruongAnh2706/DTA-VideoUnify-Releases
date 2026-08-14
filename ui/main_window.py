@@ -356,14 +356,11 @@ class DTAVideoUnifyMainWindow(QMainWindow):
         root_layout.addWidget(bottom_panel)
 
     def _check_environment(self):
-        """Check if local system has FFmpeg and FFprobe installed."""
+        """Check if local system has FFmpeg and FFprobe installed non-blockingly."""
         available, msg = FFmpegHelper.check_binaries_available()
         if not available:
-            QMessageBox.warning(
-                self, "Cảnh báo FFmpeg / FFprobe",
-                f"{msg}\n\nỨng dụng yêu cầu FFmpeg & FFprobe để gộp video. Bạn vẫn có thể duyệt giao diện và xem thử video."
-            )
-            self.log_console.append_log(f"⚠️ [CẢNH BÁO] {msg}")
+            self.log_console.append_log(f"⚠️ [CẢNH BÁO FFMPEG] {msg}")
+            self.status_bar_label.setText("⚠️ [FFmpeg Warning] Không tìm thấy FFmpeg trong hệ thống.")
         else:
             has_nvenc = FFmpegHelper.has_nvenc_support()
             gpu_str = "Hỗ trợ NVIDIA GPU NVENC" if has_nvenc else "Vi xử lý CPU (Không phát hiện NVIDIA GPU)"
