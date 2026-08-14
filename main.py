@@ -34,6 +34,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName(config.APP_NAME)
     app.setOrganizationName(config.COMPANY_NAME)
+    app.setQuitOnLastWindowClosed(True)
 
     if os.path.exists(config.LOGO_ICO_PATH):
         app.setWindowIcon(QIcon(config.LOGO_ICO_PATH))
@@ -48,9 +49,8 @@ def main():
         nonlocal main_window
         main_window = DTAVideoUnifyMainWindow()
         main_window.show()
-        # Immediately close splash screen once main window is visible
+        # Official PyQt6 way to handoff from splash to main window smoothly without quitting app
         splash.finish(main_window)
-        splash.close()
 
     splash.app_ready_signal.connect(launch_main_app)
     splash.show()
