@@ -11,7 +11,7 @@ import sys
 
 # Application Identity
 APP_NAME = "DTA VideoUnify Pro"
-APP_VERSION = "2.3.3"
+APP_VERSION = "2.3.4"
 AUTHOR_NAME = "Đức Trường AI"
 COMPANY_NAME = "DTA Studio"
 PHONE_ZALO = "0962.775.506"
@@ -58,5 +58,6 @@ QUALITY_PRESETS = [
 ASPECT_RATIOS = ["Ngang (16:9)", "Dọc (9:16)", "Vuông (1:1)"]
 
 # Subprocess & Parsing Regex Settings
-VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".avi", ".flv", ".wmv", ".webm", ".m4v"}
+SUPPORTED_VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".avi", ".flv", ".wmv", ".webm", ".m4v"}
+VIDEO_EXTENSIONS = SUPPORTED_VIDEO_EXTS
 SCANNED_DIR_BLACKLIST = {"output", "dist", "build", "temp", "tmp", ".git"}

@@ -7,7 +7,7 @@
 ; =========================================================
 
 #define MyAppName "DTA VideoUnify Pro"
-#define MyAppVersion "2.3.3"
+#define MyAppVersion "2.3.4"
 #define MyAppPublisher "DTA Studio - Đức Trường"
 #define MyAppURL "https://dta-studio.vercel.app/"
 #define MyAppExeName "DTA_VideoUnify_Pro.exe"
